@@ -346,4 +346,5 @@ For detailed security architecture and threat mitigations (TH-01 through TH-14),
  
 SŪTRA is licensed under the MIT License. Contributions that preserve our security invariants, maintain test coverage, and uphold local data sovereignty are welcomed. Please review [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [AI_INSTRUCTIONS.md](AI_INSTRUCTIONS.md), and [SECURITY.md](SECURITY.md) before submitting pull requests.
 #   H a c k t o b e r f e s t - A O T  
+ #   H a c k t o b e r f e s t - A O T  
  
