@@ -1,0 +1,150 @@
+{
+  "meta": {
+    "title": "AgentBridge — GitHub MCP Tool Execution & Policy Decision Workflow",
+    "subtitle": "Read-Only Classification, PolicyEngine Risk Boundary, MCP Dispatch & Activity Auditing",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-mcp-tool-execution.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8a-github-mcp"
+    },
+    "description": "Decision workflow governing tool execution through the GitHub MCP Connector. Details read-only auto-approval vs mutating/unknown tool authorization, PolicyEngine evaluation, MCP client execution over Streamable HTTP, error normalization, and ActivityStore auditing."
+  },
+  "states": [
+    {
+      "id": "state_start",
+      "label": "Tool Call Request",
+      "kind": "start",
+      "description": "Agent or CLI dispatches ConnectorRequest(operation='tool:<tool_name>', parameters={...})."
+    },
+    {
+      "id": "action_check_connected",
+      "label": "Verify Connected State",
+      "kind": "step",
+      "description": "Checks if connector is connected and MCP session is in READY state."
+    },
+    {
+      "id": "decision_is_connected",
+      "label": "Is Connected?",
+      "kind": "decision",
+      "description": "Branch on connection state. If not connected, reject with ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_audit_start",
+      "label": "Record Audit Start",
+      "kind": "step",
+      "description": "Records tool call start in ActivityStore with sanitized arguments and request_id."
+    },
+    {
+      "id": "decision_read_only",
+      "label": "Is Read-Only Tool?",
+      "kind": "decision",
+      "description": "Evaluates tool prefix (get_, list_, read_, search_, view_, describe_) or tool metadata read_only flag."
+    },
+    {
+      "id": "action_policy_check",
+      "label": "PolicyEngine Risk Evaluation",
+      "kind": "step",
+      "description": "Evaluates deterministic precedence: CRITICAL invariants > Session Grants > Persistent Policy > Default Risk."
+    },
+    {
+      "id": "decision_authorized",
+      "label": "Authorized by Policy?",
+      "kind": "decision",
+      "description": "Checks if PolicyEngine allowed execution (or auto-allowed LOW risk tool_read)."
+    },
+    {
+      "id": "state_denied",
+      "label": "Raise ConnectorPermissionError",
+      "kind": "step",
+      "description": "Mutating or high-risk operation rejected without approval. Audited and returned with error."
+    },
+    {
+      "id": "action_dispatch_mcp",
+      "label": "MCPClient.call_tool()",
+      "kind": "step",
+      "description": "Dispatches JSON-RPC tools/call over Streamable HTTP transport with request timeout."
+    },
+    {
+      "id": "action_sanitize_result",
+      "label": "Sanitize Result & Scrub Secrets",
+      "kind": "step",
+      "description": "Redacts secrets from result content and structured data blocks."
+    },
+    {
+      "id": "action_audit_completion",
+      "label": "Record Audit Completion",
+      "kind": "step",
+      "description": "Records completion status, duration_ms, and result in ActivityStore."
+    },
+    {
+      "id": "state_success",
+      "label": "Return ConnectorResult",
+      "kind": "end",
+      "description": "Normalized ConnectorResult returned to caller with success flag, content, and metadata."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "state_start",
+      "to": "action_check_connected",
+      "label": "Incoming execution"
+    },
+    {
+      "from": "action_check_connected",
+      "to": "decision_is_connected",
+      "label": "Inspect state"
+    },
+    {
+      "from": "decision_is_connected",
+      "to": "action_audit_start",
+      "label": "Yes (READY)"
+    },
+    {
+      "from": "action_audit_start",
+      "to": "decision_read_only",
+      "label": "Classify operation"
+    },
+    {
+      "from": "decision_read_only",
+      "to": "action_dispatch_mcp",
+      "label": "Read-only (LOW risk auto-approved)"
+    },
+    {
+      "from": "decision_read_only",
+      "to": "action_policy_check",
+      "label": "Mutating / Unknown (HIGH risk)"
+    },
+    {
+      "from": "action_policy_check",
+      "to": "decision_authorized",
+      "label": "Evaluate decision"
+    },
+    {
+      "from": "decision_authorized",
+      "to": "action_dispatch_mcp",
+      "label": "Yes (Session / Persistent grant)"
+    },
+    {
+      "from": "decision_authorized",
+      "to": "state_denied",
+      "label": "No (Requires authorization)"
+    },
+    {
+      "from": "action_dispatch_mcp",
+      "to": "action_sanitize_result",
+      "label": "Response received"
+    },
+    {
+      "from": "action_sanitize_result",
+      "to": "action_audit_completion",
+      "label": "Result scrubbed"
+    },
+    {
+      "from": "action_audit_completion",
+      "to": "state_success",
+      "label": "Audit finalized"
+    }
+  ]
+}

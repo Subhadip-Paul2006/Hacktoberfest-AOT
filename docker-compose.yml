@@ -1,0 +1,29 @@
+services:
+  agentbridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentbridge-local:latest
+    container_name: agentbridge
+    ports:
+      - "8766:8766"  # Control Plane Port
+      - "8765:8765"  # Local Runtime Port
+    volumes:
+      - agentbridge-data:/data
+      - ./config:/app/config  # For MCP config mapping
+    env_file:
+      - .env
+    environment:
+      # Ensure data is written to the persistent volume
+      - SUTRA_HOME=/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8766/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  agentbridge-data:
+    name: agentbridge-data

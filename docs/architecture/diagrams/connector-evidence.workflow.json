@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "title": "AgentBridge — Connector Evidence & Verification Separation Model",
+    "subtitle": "Strict Separation of Configuration, Reachability, Authentication & Usage Evidence",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/connector-evidence.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-4-connector-analyzer"
+    },
+    "description": "Evidence aggregation model illustrating the strict anti-assumption discipline in AgentBridge. Configuration does not imply reachability; reachability does not imply valid credentials; capabilities do not imply runtime verification; and registration never implies usage."
+  },
+  "states": [
+    {
+      "id": "raw_input",
+      "label": "Declared Definition & Environment",
+      "kind": "start",
+      "description": "Declared metadata, required environment keys, and endpoint definitions."
+    },
+    {
+      "id": "state_configured",
+      "label": "CONFIGURED",
+      "kind": "decision",
+      "description": "All declared configuration keys and environment variables are present and non-empty. Does NOT imply network connectivity."
+    },
+    {
+      "id": "state_connected",
+      "label": "CONNECTED & REACHABLE",
+      "kind": "decision",
+      "description": "Socket, HTTP endpoint, or process spawned successfully. Does NOT imply accepted credentials or authorization."
+    },
+    {
+      "id": "state_authenticated",
+      "label": "AUTHENTICATED",
+      "kind": "decision",
+      "description": "Explicit upstream handshake or auth token challenge accepted. If untested, remains strictly UNKNOWN (never guessed)."
+    },
+    {
+      "id": "state_capabilities",
+      "label": "CAPABILITIES DISCOVERED",
+      "kind": "step",
+      "description": "Tools, resources, and schemas inspected without executing mutations or running destructive commands."
+    },
+    {
+      "id": "state_verified",
+      "label": "VERIFIED",
+      "kind": "decision",
+      "description": "All diagnostic gates pass: configuration, reachability, authentication, capability discovery, and health checks."
+    },
+    {
+      "id": "state_partially_verified",
+      "label": "PARTIALLY_VERIFIED",
+      "kind": "step",
+      "description": "Some checks succeeded but critical items remain UNKNOWN (e.g. offline dry run or untested auth challenge)."
+    },
+    {
+      "id": "state_failed",
+      "label": "FAILED",
+      "kind": "step",
+      "description": "At least one definitive check failed (e.g. missing required token, connection refused, or invalid auth credentials)."
+    },
+    {
+      "id": "state_usage",
+      "label": "USAGE EVIDENCE (Orthogonal)",
+      "kind": "end",
+      "description": "Derived strictly from ActivityStore tool execution history. Distinct states: OBSERVED_IN_USE, NOT_OBSERVED, or UNKNOWN."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "raw_input",
+      "to": "state_configured",
+      "label": "evaluate declared env/config"
+    },
+    {
+      "from": "state_configured",
+      "to": "state_connected",
+      "label": "test network reachability"
+    },
+    {
+      "from": "state_configured",
+      "to": "state_failed",
+      "label": "missing required config"
+    },
+    {
+      "from": "state_connected",
+      "to": "state_authenticated",
+      "label": "test credential challenge"
+    },
+    {
+      "from": "state_connected",
+      "to": "state_partially_verified",
+      "label": "connection succeeded, auth untested (UNKNOWN)"
+    },
+    {
+      "from": "state_connected",
+      "to": "state_failed",
+      "label": "connection refused / unreachable"
+    },
+    {
+      "from": "state_authenticated",
+      "to": "state_capabilities",
+      "label": "credentials valid"
+    },
+    {
+      "from": "state_authenticated",
+      "to": "state_failed",
+      "label": "invalid token / 401 unauthorized"
+    },
+    {
+      "from": "state_capabilities",
+      "to": "state_verified",
+      "label": "all health & diagnostics PASS"
+    },
+    {
+      "from": "state_capabilities",
+      "to": "state_partially_verified",
+      "label": "diagnostics report UNKNOWN/DEGRADED"
+    },
+    {
+      "from": "state_verified",
+      "to": "state_usage",
+      "label": "query ActivityStore records"
+    },
+    {
+      "from": "state_partially_verified",
+      "to": "state_usage",
+      "label": "query ActivityStore records"
+    },
+    {
+      "from": "state_failed",
+      "to": "state_usage",
+      "label": "query ActivityStore records"
+    }
+  ]
+}

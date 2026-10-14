@@ -1,0 +1,95 @@
+{
+  "meta": {
+    "title": "AgentBridge — Codebase Explorer Workflow",
+    "subtitle": "Sandboxed Mobile Code Review and Codebase Exploration Flow",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/codebase-explorer.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-5-explorer"
+    },
+    "description": "Decision and execution workflow guiding mobile operators from project selection through sandboxed directory exploration, file classification, bounded previewing, search, symbols, and secure download."
+  },
+  "states": [
+    {
+      "id": "telegram_entry",
+      "label": "Telegram User",
+      "kind": "start",
+      "description": "Operator triggers /projects or clicks 📁 Projects on Telegram navigation keyboard."
+    },
+    {
+      "id": "select_project",
+      "label": "Select Project",
+      "kind": "step",
+      "description": "Select an authorized discovered project from the registered workspaces list."
+    },
+    {
+      "id": "browse_dir",
+      "label": "Browse Directory",
+      "kind": "step",
+      "description": "Paginated, lazy directory traversal strictly bounded within authorized workspace root."
+    },
+    {
+      "id": "select_file",
+      "label": "Select File",
+      "kind": "step",
+      "description": "Operator selects a file entry from paginated directory screen."
+    },
+    {
+      "id": "sandbox_auth",
+      "label": "Authorization / Sandbox Check",
+      "kind": "decision",
+      "description": "Verifies target path is inside workspace, not sensitive (.env, keys), and symlinks do not escape."
+    },
+    {
+      "id": "classification",
+      "label": "File Classification",
+      "kind": "decision",
+      "description": "Probes 8KB header and extension to classify as binary or text."
+    },
+    {
+      "id": "binary_view",
+      "label": "Binary File Information",
+      "kind": "step",
+      "description": "Displays MIME type, category, file size, and provides secure download button."
+    },
+    {
+      "id": "text_metadata",
+      "label": "Text File Information",
+      "kind": "step",
+      "description": "Displays language, total line count, size, timestamp, and actions (Preview, Symbols, Search, Download)."
+    },
+    {
+      "id": "bounded_preview",
+      "label": "Bounded Code Preview",
+      "kind": "step",
+      "description": "Default 35-line bounded code window with exact line numbers, syntax highlighting, and secret redaction."
+    },
+    {
+      "id": "preview_actions",
+      "label": "Preview Actions (Next / Prev / Jump / Search / Symbols / Download)",
+      "kind": "step",
+      "description": "Interactive tools: pagination, jumping to target line, text search, AST symbol navigation, or redacted export."
+    },
+    {
+      "id": "secure_download",
+      "label": "Secure Download",
+      "kind": "end",
+      "description": "Streams redacted text export or safe binary attachment within size limits."
+    }
+  ],
+  "transitions": [
+    { "from": "telegram_entry", "to": "select_project", "label": "Projects Menu" },
+    { "from": "select_project", "to": "browse_dir", "label": "Open Root" },
+    { "from": "browse_dir", "to": "select_file", "label": "Choose Entry" },
+    { "from": "select_file", "to": "sandbox_auth", "label": "Validate Target" },
+    { "from": "sandbox_auth", "to": "classification", "label": "Allowed" },
+    { "from": "classification", "to": "binary_view", "label": "Is Binary" },
+    { "from": "classification", "to": "text_metadata", "label": "Is Text" },
+    { "from": "text_metadata", "to": "bounded_preview", "label": "Open Preview" },
+    { "from": "bounded_preview", "to": "preview_actions", "label": "Navigate" },
+    { "from": "binary_view", "to": "secure_download", "label": "Download Binary" },
+    { "from": "preview_actions", "to": "secure_download", "label": "Export File" }
+  ]
+}

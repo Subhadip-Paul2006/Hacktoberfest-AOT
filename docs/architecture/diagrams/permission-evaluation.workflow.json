@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "title": "AgentBridge — Permission Evaluation Workflow",
+    "subtitle": "Deterministic Layered Precedence Resolution",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/permission-evaluation.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "hardening-pass-2026-10"
+    },
+    "description": "Deterministic 5-tier evaluation chain for permission requests: CRITICAL safety invariants → Active Session Grants → Project-scoped Policies → Global Policies → Default Engine Risk Rules."
+  },
+  "nodes": [
+    {
+      "id": "incoming_request",
+      "label": "Agent Request\n(action, risk_level)",
+      "kind": "event",
+      "description": "Action requested by an AI agent (e.g., file_write, bash_exec, git_push) received by PolicyEngine.check_permission().",
+      "source": { "file": "sutra/policy_engine.py", "symbol": "PolicyEngine.check_permission", "lines": "63-80" }
+    },
+    {
+      "id": "critical_check",
+      "label": "Is Action or Risk\nCRITICAL?",
+      "kind": "decision",
+      "description": "Hard-coded safety invariant: CRITICAL actions (e.g., destructive delete, rm -rf, drop table) cannot be auto-approved by any persistent or session policy.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "81-89" }
+    },
+    {
+      "id": "require_telegram_prompt_critical",
+      "label": "Require Explicit\nTelegram Approval (Once)",
+      "kind": "step",
+      "description": "CRITICAL actions must always be prompted to the human operator for explicit one-time approval.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "86-89" }
+    },
+    {
+      "id": "session_grant_check",
+      "label": "Has Active\nSession Grant?",
+      "kind": "decision",
+      "description": "Check if an active session-scoped grant exists for (session_id, action_type). Grants expire automatically when session ends.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "90-95" }
+    },
+    {
+      "id": "auto_allow_session",
+      "label": "AUTO ALLOW\n(Session Grant)",
+      "kind": "terminal",
+      "description": "Action allowed based on temporary session authorization granted earlier by the user.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "94-95" }
+    },
+    {
+      "id": "project_policy_check",
+      "label": "Matches Project\nPolicy?",
+      "kind": "decision",
+      "description": "Check SQLite PolicyStore for enabled project-scoped policy matching workspace_path and action_type (or wildcard '*').",
+      "source": { "file": "sutra/policy_engine.py", "lines": "96-105" }
+    },
+    {
+      "id": "evaluate_project_policy",
+      "label": "Evaluate Project\nDecision",
+      "kind": "step",
+      "description": "If project policy is 'allow', check that risk is not CRITICAL and allow. If 'deny', reject immediately. If 'ask', prompt user.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "100-112" }
+    },
+    {
+      "id": "global_policy_check",
+      "label": "Matches Global\nPolicy?",
+      "kind": "decision",
+      "description": "Check SQLite PolicyStore for enabled global policy matching action_type (or wildcard '*').",
+      "source": { "file": "sutra/policy_engine.py", "lines": "113-125" }
+    },
+    {
+      "id": "evaluate_global_policy",
+      "label": "Evaluate Global\nDecision",
+      "kind": "step",
+      "description": "If global policy is 'allow', auto-allow non-critical. If 'deny', reject immediately. If 'ask', prompt user.",
+      "source": { "file": "sutra/policy_engine.py", "lines": "120-130" }
+    },
+    {
+      "id": "fallback_default_rules",
+      "label": "Default Engine Risk Assessment",
+      "kind": "step",
+      "description": "Fallback to existing PermissionEngine: LOW risk auto-approved; MEDIUM and HIGH ask user via Telegram.",
+      "source": { "file": "sutra/permissions.py", "symbol": "PermissionEngine.check_permission" }
+    },
+    {
+      "id": "telegram_callback",
+      "label": "Telegram Callback\nHandling",
+      "kind": "step",
+      "description": "Operator responds via Telegram inline keyboard: Allow Once, Allow Session, Deny, or Modify. Decision recorded in audit log.",
+      "source": { "file": "sutra/telegram_bot.py", "lines": "785-796" }
+    },
+    {
+      "id": "audit_log_record",
+      "label": "Write Audit Log\nEntry",
+      "kind": "step",
+      "description": "Policy decision and execution timestamp written to SQLite policy_audit_log table.",
+      "source": { "file": "sutra/policy_store.py", "symbol": "PolicyStore.record_audit", "lines": "120-140" }
+    },
+    {
+      "id": "allow_outcome",
+      "label": "EXECUTION\nALLOWED",
+      "kind": "terminal",
+      "description": "Tool / command execution permitted and dispatched to local runtime.",
+      "source": { "file": "sutra/control_plane.py", "symbol": "ControlPlane.dispatch_command" }
+    },
+    {
+      "id": "deny_outcome",
+      "label": "EXECUTION\nDENIED",
+      "kind": "terminal",
+      "description": "Tool / command rejected with descriptive security reason.",
+      "source": { "file": "sutra/control_plane.py" }
+    }
+  ],
+  "relationships": [
+    { "from": "incoming_request", "to": "critical_check", "label": "evaluate risk", "kind": "sync" },
+    { "from": "critical_check", "to": "require_telegram_prompt_critical", "label": "Yes (CRITICAL)", "kind": "branch" },
+    { "from": "critical_check", "to": "session_grant_check", "label": "No (< CRITICAL)", "kind": "branch" },
+    { "from": "require_telegram_prompt_critical", "to": "telegram_callback", "label": "dispatch prompt", "kind": "sync" },
+    { "from": "session_grant_check", "to": "auto_allow_session", "label": "Yes (grant active)", "kind": "branch" },
+    { "from": "session_grant_check", "to": "project_policy_check", "label": "No active grant", "kind": "branch" },
+    { "from": "auto_allow_session", "to": "audit_log_record", "label": "log grant use", "kind": "sync" },
+    { "from": "project_policy_check", "to": "evaluate_project_policy", "label": "Match found", "kind": "branch" },
+    { "from": "project_policy_check", "to": "global_policy_check", "label": "No match", "kind": "branch" },
+    { "from": "evaluate_project_policy", "to": "allow_outcome", "label": "decision == allow", "kind": "branch" },
+    { "from": "evaluate_project_policy", "to": "deny_outcome", "label": "decision == deny", "kind": "branch" },
+    { "from": "evaluate_project_policy", "to": "telegram_callback", "label": "decision == ask", "kind": "branch" },
+    { "from": "global_policy_check", "to": "evaluate_global_policy", "label": "Match found", "kind": "branch" },
+    { "from": "global_policy_check", "to": "fallback_default_rules", "label": "No match", "kind": "branch" },
+    { "from": "evaluate_global_policy", "to": "allow_outcome", "label": "decision == allow", "kind": "branch" },
+    { "from": "evaluate_global_policy", "to": "deny_outcome", "label": "decision == deny", "kind": "branch" },
+    { "from": "evaluate_global_policy", "to": "telegram_callback", "label": "decision == ask", "kind": "branch" },
+    { "from": "fallback_default_rules", "to": "allow_outcome", "label": "LOW risk", "kind": "branch" },
+    { "from": "fallback_default_rules", "to": "telegram_callback", "label": "MEDIUM/HIGH risk", "kind": "branch" },
+    { "from": "telegram_callback", "to": "allow_outcome", "label": "User approves", "kind": "branch" },
+    { "from": "telegram_callback", "to": "deny_outcome", "label": "User denies", "kind": "branch" },
+    { "from": "audit_log_record", "to": "allow_outcome", "label": "proceed", "kind": "sync" }
+  ]
+}

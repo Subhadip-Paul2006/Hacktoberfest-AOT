@@ -1,0 +1,232 @@
+{
+  "meta": {
+    "title": "AgentBridge — Terminal Command Execution & Authorization Workflow",
+    "subtitle": "Step-by-Step Validation, Policy Boundary, Confinement, Safe Process Supervision & Process Tree Cleanup",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/terminal-command-execution.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8b-terminal-connector"
+    },
+    "description": "Deterministic decision and execution workflow governing local terminal command requests in AgentBridge. Details working directory confinement, shell token rejection, PolicyEngine risk evaluation, CRITICAL operation protection, workspace locking, controlled environment construction, asynchronous supervision, output truncation, tree termination, and ActivityStore auditing."
+  },
+  "states": [
+    {
+      "id": "state_start",
+      "label": "Command Execution Request",
+      "kind": "start",
+      "description": "Caller dispatches ConnectorRequest(operation='tool:execute', parameters={'executable': exe, 'args': [...], 'cwd': path, 'timeout': sec})."
+    },
+    {
+      "id": "action_check_ready",
+      "label": "Verify Connector READY State",
+      "kind": "step",
+      "description": "Verifies connector is in READY status. If not, raises ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_validate_cwd",
+      "label": "Validate Working Directory Confinement",
+      "kind": "step",
+      "description": "Resolves canonical path, verifies directory exists, rejects filesystem roots, and verifies strict containment within authorized workspace roots."
+    },
+    {
+      "id": "decision_cwd_valid",
+      "label": "CWD Valid & Confined?",
+      "kind": "decision",
+      "description": "Branch on working directory confinement. Rejects path traversal escapes outside workspace."
+    },
+    {
+      "id": "state_cwd_error",
+      "label": "Reject with ConnectorInvalidRequestError",
+      "kind": "error",
+      "description": "Invalid, non-existent, or unconfined directory rejected before any command inspection."
+    },
+    {
+      "id": "action_validate_tokens",
+      "label": "Validate Shell Safety & Argument Boundaries",
+      "kind": "step",
+      "description": "Scans for forbidden chaining operators (; && || | > <), command substitutions ($() ``), and wrapper script invocations (bash -c, cmd /c, powershell -c)."
+    },
+    {
+      "id": "decision_tokens_safe",
+      "label": "Arguments Shell-Safe?",
+      "kind": "decision",
+      "description": "Branch on argument safety check. Rejects shell injection attempts and credential path targets."
+    },
+    {
+      "id": "state_token_error",
+      "label": "Reject with ConnectorPermissionError",
+      "kind": "error",
+      "description": "Shell injection tokens or sensitive credential path targets rejected immediately."
+    },
+    {
+      "id": "action_policy_eval",
+      "label": "PolicyEngine Risk Evaluation",
+      "kind": "step",
+      "description": "Assesses risk level (LOW/HIGH/CRITICAL). Evaluates CRITICAL patterns (git push --force, rm -rf), safe read-only queries (git status, python --version), and active session grants."
+    },
+    {
+      "id": "decision_policy_allowed",
+      "label": "Authorized by Policy?",
+      "kind": "decision",
+      "description": "Branch on policy authorization. CRITICAL operations require single-use approval; mutating commands require grants."
+    },
+    {
+      "id": "state_policy_denied",
+      "label": "Reject with ConnectorPermissionError (No Spawn)",
+      "kind": "error",
+      "description": "Unauthorized command blocked at the policy boundary; child process is NEVER spawned."
+    },
+    {
+      "id": "action_audit_start",
+      "label": "Record Audit Start in ActivityStore",
+      "kind": "step",
+      "description": "Persists tool call record with sanitized arguments, target cwd, and universal request_id."
+    },
+    {
+      "id": "action_acquire_locks",
+      "label": "Acquire Workspace Lock & Concurrency Slot",
+      "kind": "step",
+      "description": "Acquires WorkspaceLockManager directory write lock (if requested) and acquires concurrency semaphore slot."
+    },
+    {
+      "id": "action_spawn_process",
+      "label": "Spawn Native Subprocess (shell=False)",
+      "kind": "step",
+      "description": "Constructs controlled environment stripping parent secrets and spawns child via asyncio.create_subprocess_exec."
+    },
+    {
+      "id": "action_supervise_process",
+      "label": "Supervise Execution & Stream Output",
+      "kind": "step",
+      "description": "Awaits child communication within bounded timeout cap, capturing stdout and stderr streams."
+    },
+    {
+      "id": "decision_execution_result",
+      "label": "Execution Outcome?",
+      "kind": "decision",
+      "description": "Evaluate outcome: Success, Non-zero Exit, Timeout, or Task Cancellation."
+    },
+    {
+      "id": "action_kill_tree",
+      "label": "Deep Process Tree Termination",
+      "kind": "step",
+      "description": "Invokes kill_process_tree (taskkill /F /T on Windows, terminate -> kill on POSIX) to eliminate zombie processes."
+    },
+    {
+      "id": "state_timeout_error",
+      "label": "Raise ConnectorTimeoutError",
+      "kind": "error",
+      "description": "Command execution exceeded timeout threshold; process cleanly terminated."
+    },
+    {
+      "id": "action_truncate_redact",
+      "label": "Enforce Byte Caps & Centralized Redaction",
+      "kind": "step",
+      "description": "Truncates streams exceeding max byte limits (sets truncated flag) and scrubs secret patterns from output."
+    },
+    {
+      "id": "action_audit_complete",
+      "label": "Record Tool Call Completion & Release Locks",
+      "kind": "step",
+      "description": "Updates ActivityStore record with duration and exit code, releases workspace lock and concurrency semaphore."
+    },
+    {
+      "id": "state_finish",
+      "label": "Return Structured ConnectorResult",
+      "kind": "end",
+      "description": "Returns normalized ConnectorResult with exit code, sanitized content, structured_data, and duration metadata."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "state_start",
+      "to": "action_check_ready"
+    },
+    {
+      "from": "action_check_ready",
+      "to": "action_validate_cwd"
+    },
+    {
+      "from": "action_validate_cwd",
+      "to": "decision_cwd_valid"
+    },
+    {
+      "from": "decision_cwd_valid",
+      "to": "action_validate_tokens",
+      "condition": "Confined within workspace"
+    },
+    {
+      "from": "decision_cwd_valid",
+      "to": "state_cwd_error",
+      "condition": "Traversal or outside workspace"
+    },
+    {
+      "from": "action_validate_tokens",
+      "to": "decision_tokens_safe"
+    },
+    {
+      "from": "decision_tokens_safe",
+      "to": "action_policy_eval",
+      "condition": "No forbidden tokens or wrappers"
+    },
+    {
+      "from": "decision_tokens_safe",
+      "to": "state_token_error",
+      "condition": "Forbidden token or wrapper detected"
+    },
+    {
+      "from": "action_policy_eval",
+      "to": "decision_policy_allowed"
+    },
+    {
+      "from": "decision_policy_allowed",
+      "to": "action_audit_start",
+      "condition": "Auto-approved or explicit grant"
+    },
+    {
+      "from": "decision_policy_allowed",
+      "to": "state_policy_denied",
+      "condition": "Denied or missing authorization"
+    },
+    {
+      "from": "action_audit_start",
+      "to": "action_acquire_locks"
+    },
+    {
+      "from": "action_acquire_locks",
+      "to": "action_spawn_process"
+    },
+    {
+      "from": "action_spawn_process",
+      "to": "action_supervise_process"
+    },
+    {
+      "from": "action_supervise_process",
+      "to": "decision_execution_result"
+    },
+    {
+      "from": "decision_execution_result",
+      "to": "action_truncate_redact",
+      "condition": "Completed with exit code"
+    },
+    {
+      "from": "decision_execution_result",
+      "to": "action_kill_tree",
+      "condition": "Timeout or Cancellation"
+    },
+    {
+      "from": "action_kill_tree",
+      "to": "state_timeout_error"
+    },
+    {
+      "from": "action_truncate_redact",
+      "to": "action_audit_complete"
+    },
+    {
+      "from": "action_audit_complete",
+      "to": "state_finish"
+    }
+  ]
+}

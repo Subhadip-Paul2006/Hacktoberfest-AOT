@@ -1,0 +1,108 @@
+{
+  "meta": {
+    "title": "AgentBridge — Large File Preview & Export Semantics",
+    "subtitle": "Separation of Bounded Window Preview from Deterministic Multipart Export",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/large-file-preview-export.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-5-large-file-hardening"
+    },
+    "description": "Architectural workflow distinguishing Total File Size, Requested Preview Window, Single Scan Budget, and Export Chunk Size across preview and multi-part export lifecycles."
+  },
+  "states": [
+    {
+      "id": "file_selected",
+      "label": "File Selected in Workspace",
+      "kind": "start",
+      "description": "Operator selects a file from the repository (e.g. 50 MB, 100 MB, or 120 MB local file)."
+    },
+    {
+      "id": "metadata_inspection",
+      "label": "Metadata & Classification",
+      "kind": "step",
+      "description": "Inspects file size, detects binary/text, determines version token, and checks export eligibility (<= 200 MB)."
+    },
+    {
+      "id": "user_action_choice",
+      "label": "Preview vs. Export Decision",
+      "kind": "decision",
+      "description": "Distinguishes content preview inspection from transport file export."
+    },
+    {
+      "id": "preview_window_request",
+      "label": "Requested Preview Window",
+      "kind": "step",
+      "description": "Operator specifies target window (e.g. lines 17200-17234, default 35 lines, max 200 lines)."
+    },
+    {
+      "id": "sparse_checkpoint_seek",
+      "label": "Sparse Checkpoint Seek",
+      "kind": "step",
+      "description": "SparseLineIndex locates nearest checkpoint offset (indexed every 1,000 lines) for sub-millisecond seek."
+    },
+    {
+      "id": "bounded_read_bytes",
+      "label": "Bounded Line & Byte Read",
+      "kind": "step",
+      "description": "Reads lines up to target_end_line or until MAX_PREVIEW_BYTES (64 KB) limit is reached."
+    },
+    {
+      "id": "preview_redaction",
+      "label": "Secret Redaction Filter",
+      "kind": "step",
+      "description": "Sanitizes tokens, credentials, and API keys line-by-line before rendering."
+    },
+    {
+      "id": "telegram_preview_deliver",
+      "label": "Deliver Telegram Preview",
+      "kind": "end",
+      "description": "Renders bounded code block with line numbers, jump options, and size truncation notice if bounded."
+    },
+    {
+      "id": "export_size_check",
+      "label": "Export Chunk Size Evaluation",
+      "kind": "decision",
+      "description": "Checks if file size <= MAX_DOWNLOAD_CHUNK_BYTES (10 MB) or requires multi-part chunking."
+    },
+    {
+      "id": "direct_single_download",
+      "label": "Direct Single Download",
+      "kind": "end",
+      "description": "File is <= 10 MB; exports as single base64 attachment directly to Telegram."
+    },
+    {
+      "id": "export_planner",
+      "label": "Export Planner (build_export_plan)",
+      "kind": "step",
+      "description": "Calculates deterministic chunks, splits text on newline boundaries, and preserves UTF-8 integrity."
+    },
+    {
+      "id": "part_checksum_manifest",
+      "label": "Per-Part SHA-256 & Manifest Creation",
+      "kind": "step",
+      "description": "Computes SHA-256 per part and whole-file SHA-256, generating ExportManifest with exact byte ranges."
+    },
+    {
+      "id": "telegram_export_deliver",
+      "label": "Telegram Multipart Delivery",
+      "kind": "end",
+      "description": "Presents export screen with parts list and manifest; delivers parts on-demand with verified integrity."
+    }
+  ],
+  "transitions": [
+    { "from": "file_selected", "to": "metadata_inspection", "label": "Select File" },
+    { "from": "metadata_inspection", "to": "user_action_choice", "label": "Choose Action" },
+    { "from": "user_action_choice", "to": "preview_window_request", "label": "Tap [👁 Preview / Jump]" },
+    { "from": "preview_window_request", "to": "sparse_checkpoint_seek", "label": "Query Sparse Index" },
+    { "from": "sparse_checkpoint_seek", "to": "bounded_read_bytes", "label": "Direct Seek & Stream" },
+    { "from": "bounded_read_bytes", "to": "preview_redaction", "label": "Apply Byte/Line Limit" },
+    { "from": "preview_redaction", "to": "telegram_preview_deliver", "label": "Render Screen" },
+    { "from": "user_action_choice", "to": "export_size_check", "label": "Tap [📥 Download / 📦 Export]" },
+    { "from": "export_size_check", "to": "direct_single_download", "label": "Size <= 10 MB" },
+    { "from": "export_size_check", "to": "export_planner", "label": "Size > 10 MB" },
+    { "from": "export_planner", "to": "part_checksum_manifest", "label": "Generate Chunks" },
+    { "from": "part_checksum_manifest", "to": "telegram_export_deliver", "label": "Present Manifest & Parts" }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Stdio Transport Architecture",
+    "subtitle": "Process Isolation, Stream Multiplexing, Stderr Diagnostics & Security Controls",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-stdio-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-6-mcp-stdio"
+    },
+    "description": "System architecture of the Phase 7.6 Model Context Protocol (MCP) Stdio Transport in AgentBridge. Illustrates subprocess management, stream separation (stdin/stdout/stderr), framing protection, secret sanitization, cross-platform teardown, and integration with the AgentBridge Connector ecosystem."
+  },
+  "components": [
+    {
+      "id": "mcp_connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp/connector.py)",
+      "tier": "adapter",
+      "description": "Standard AgentBridge Connector abstraction integrating the MCP client session, routing operations, and coordinating ActivityStore audits."
+    },
+    {
+      "id": "mcp_client",
+      "label": "MCPClient\n(sutra/connectors/mcp/client.py)",
+      "tier": "service",
+      "description": "High-level domain client managing tools, resources, prompts, and bounded cursor pagination."
+    },
+    {
+      "id": "mcp_session",
+      "label": "MCPSession\n(sutra/connectors/mcp/session.py)",
+      "tier": "core",
+      "description": "Protocol coordinator maintaining session FSM (READY/DEGRADED/ERROR) and executing version negotiation."
+    },
+    {
+      "id": "stdio_transport",
+      "label": "StdioMCPTransport\n(sutra/connectors/mcp/stdio.py)",
+      "tier": "transport",
+      "description": "Concrete transport implementing MCPTransport over local child process stdin/stdout/stderr streams with framing protection."
+    },
+    {
+      "id": "stdio_config",
+      "label": "MCPStdioConfig\n(sutra/connectors/mcp/stdio.py)",
+      "tier": "config",
+      "description": "Strongly typed configuration specifying command executable, argument arrays, timeout parameters, and sanitized environment rules."
+    },
+    {
+      "id": "child_process",
+      "label": "Child MCP Process\n(Local Subprocess)",
+      "tier": "process",
+      "description": "Local process executed with shell=False, receiving protocol requests on stdin and emitting protocol responses on stdout."
+    },
+    {
+      "id": "stderr_buffer",
+      "label": "Bounded Stderr Ring Buffer\n(sutra/connectors/mcp/stdio.py)",
+      "tier": "storage",
+      "description": "Non-blocking ring buffer capturing up to max_stderr_lines/bytes of diagnostic output without deadlocking or polluting stdout."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "SQLite audit repository recording correlated tool call executions and connector lifecycle events."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine\n(sutra/permissions)",
+      "tier": "security",
+      "description": "Authoritative security engine evaluating mutating tool actions prior to execution."
+    }
+  ],
+  "relationships": [
+    {
+      "source": "mcp_connector",
+      "target": "mcp_client",
+      "label": "delegates execution to"
+    },
+    {
+      "source": "mcp_client",
+      "target": "mcp_session",
+      "label": "dispatches requests via"
+    },
+    {
+      "source": "mcp_session",
+      "target": "stdio_transport",
+      "label": "exchanges JSON-RPC over"
+    },
+    {
+      "source": "stdio_transport",
+      "target": "stdio_config",
+      "label": "configured by"
+    },
+    {
+      "source": "stdio_transport",
+      "target": "child_process",
+      "label": "spawns and monitors"
+    },
+    {
+      "source": "child_process",
+      "target": "stderr_buffer",
+      "label": "streams stderr logs into"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "activity_store",
+      "label": "audits tool calls to"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "policy_engine",
+      "label": "verifies permissions against"
+    }
+  ]
+}

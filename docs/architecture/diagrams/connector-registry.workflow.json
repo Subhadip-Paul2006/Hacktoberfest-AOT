@@ -1,0 +1,128 @@
+{
+  "meta": {
+    "title": "AgentBridge — Connector Registry & Lifecycle Management",
+    "subtitle": "Central In-Process Authority & Future Generic Analyzer Flow",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/connector-registry.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-3-connector-registry"
+    },
+    "description": "Lifecycle orchestration, availability guard, and inspection pipeline decoupling connector definitions, registry management, future generic analysis, and verified operational state."
+  },
+  "states": [
+    {
+      "id": "connector_declaration",
+      "label": "Connector Definition",
+      "kind": "start",
+      "description": "Connector instance declared with unique connector_id, provider, type (MCP/REST/CLI), and capabilities."
+    },
+    {
+      "id": "registry_register",
+      "label": "Connector Registry",
+      "kind": "step",
+      "description": "Instance registered into ConnectorRegistry. Checks duplicate ID uniqueness and records registration event into ActivityStore."
+    },
+    {
+      "id": "availability_check",
+      "label": "Availability Guard",
+      "kind": "decision",
+      "description": "Verifies whether the connector instance is administratively enabled or disabled."
+    },
+    {
+      "id": "state_disabled",
+      "label": "Disabled State",
+      "kind": "step",
+      "description": "Connector is administratively disabled. Connection attempts and executions are rejected with ConnectorDisabledError."
+    },
+    {
+      "id": "lifecycle_fsm",
+      "label": "Instance Lifecycle FSM",
+      "kind": "step",
+      "description": "Per-instance state machine transitions through REGISTERED, CONNECTING, READY, DEGRADED, DISCONNECTED, or ERROR."
+    },
+    {
+      "id": "analyzer_inspection",
+      "label": "Generic Analyzer Pipeline (Phase 7.4)",
+      "kind": "step",
+      "description": "Consumes standardized ConnectorAnalysisDescriptor without provider-specific branching. Evaluates configuration, transport, and credentials."
+    },
+    {
+      "id": "client_applicability",
+      "label": "Environment / Client Checks",
+      "kind": "step",
+      "description": "Evaluates applicability to local workstation tools (Cursor, VS Code, local CLI, SUTRA runtime)."
+    },
+    {
+      "id": "health_verification",
+      "label": "Diagnostic Verification",
+      "kind": "decision",
+      "description": "Probes connector health diagnostics. Confirms operational status without blocking unrelated instances."
+    },
+    {
+      "id": "verified_connector",
+      "label": "Verified Connector",
+      "kind": "end",
+      "description": "Connector instance confirmed ready, verified, and available for agent tool execution."
+    },
+    {
+      "id": "verification_failed",
+      "label": "Degraded / Error State",
+      "kind": "end",
+      "description": "Instance marked ERROR or DEGRADED with diagnostic reasons logged in ActivityStore."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "connector_declaration",
+      "to": "registry_register",
+      "label": "register(connector)"
+    },
+    {
+      "from": "registry_register",
+      "to": "availability_check",
+      "label": "Evaluate Enabled Flag"
+    },
+    {
+      "from": "availability_check",
+      "to": "state_disabled",
+      "label": "enabled == false"
+    },
+    {
+      "from": "availability_check",
+      "to": "lifecycle_fsm",
+      "label": "enabled == true"
+    },
+    {
+      "from": "state_disabled",
+      "to": "lifecycle_fsm",
+      "label": "enable(connector_id)"
+    },
+    {
+      "from": "lifecycle_fsm",
+      "to": "analyzer_inspection",
+      "label": "get_analysis_descriptor()"
+    },
+    {
+      "from": "analyzer_inspection",
+      "to": "client_applicability",
+      "label": "Inspect Dependencies"
+    },
+    {
+      "from": "client_applicability",
+      "to": "health_verification",
+      "label": "Run Health Check"
+    },
+    {
+      "from": "health_verification",
+      "to": "verified_connector",
+      "label": "healthy == true"
+    },
+    {
+      "from": "health_verification",
+      "to": "verification_failed",
+      "label": "healthy == false / exception"
+    }
+  ]
+}

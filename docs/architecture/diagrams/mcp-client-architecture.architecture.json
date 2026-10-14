@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "title": "AgentBridge — Transport-Agnostic MCP Client Core Architecture",
+    "subtitle": "Protocol Decoupling, Session Lifecycle, Connector Integration & Security Boundaries",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-client-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-5-mcp-client-core"
+    },
+    "description": "Architectural model of the Model Context Protocol (MCP) Client Core in AgentBridge. Demonstrates the clean decoupling between the abstract transport layer, session lifecycle manager, high-level client engine, and canonical MCPConnector adapter. Enforces strict secret sanitization, SQLite ActivityStore auditing, and centralized resilience integration."
+  },
+  "components": [
+    {
+      "id": "mcp_connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp/connector.py)",
+      "tier": "adapter",
+      "description": "First-class AgentBridge Connector adapter exposing tools, resources, and prompts as canonical connector operations. Coordinates ActivityStore auditing and secret redaction."
+    },
+    {
+      "id": "mcp_client",
+      "label": "MCPClient\n(sutra/connectors/mcp/client.py)",
+      "tier": "service",
+      "description": "High-level domain client providing clean APIs for tools, resources, and prompts with bounded pagination (max_pages/max_items) and structured error mapping."
+    },
+    {
+      "id": "mcp_session",
+      "label": "MCPSession\n(sutra/connectors/mcp/session.py)",
+      "tier": "core",
+      "description": "State machine and protocol coordinator managing lifecycle states, handshake version negotiation (2026-07-28 down to 2024-11-05), and ping diagnostics."
+    },
+    {
+      "id": "mcp_transport",
+      "label": "MCPTransport Interface\n(sutra/connectors/mcp/transport.py)",
+      "tier": "transport",
+      "description": "Transport-agnostic contract defining open(), close(), is_connected(), send_request(), send_notification(), and ping(). Shields core client from physical I/O."
+    },
+    {
+      "id": "fake_mcp_transport",
+      "label": "FakeMCPTransport\n(sutra/connectors/mcp/testing.py)",
+      "tier": "testing",
+      "description": "Deterministic in-memory double supporting protocol version simulation, pagination cursors, timeout injection, and connection drop triggers."
+    },
+    {
+      "id": "mcp_models",
+      "label": "MCP Protocol Models\n(sutra/connectors/mcp/models.py)",
+      "tier": "data",
+      "description": "Structured dataclasses for capabilities, tools, resources, prompts, pagination cursors, and capability mapping to ConnectorCapability."
+    },
+    {
+      "id": "connector_registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "tier": "core",
+      "description": "Central in-process registry cataloging MCPConnector instances and producing ConnectorAnalysisDescriptors."
+    },
+    {
+      "id": "connector_analyzer",
+      "label": "ConnectorAnalyzer\n(sutra/connectors/analyzer/pipeline.py)",
+      "tier": "service",
+      "description": "Phase 7.4 generic verification engine inspecting MCPConnector health, tools, and transport declarations without vendor-specific logic."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "SQLite audit store recording correlated tool execution start, finish, duration, and scrubbed arguments/results."
+    },
+    {
+      "id": "security_policy",
+      "label": "PolicyEngine & Permissions\n(sutra/permissions)",
+      "tier": "security",
+      "description": "Authoritative governance engine evaluating mutating tool executions prior to dispatch."
+    }
+  ],
+  "relationships": [
+    {
+      "source": "mcp_connector",
+      "target": "mcp_client",
+      "label": "delegates operations to"
+    },
+    {
+      "source": "mcp_client",
+      "target": "mcp_session",
+      "label": "dispatches requests via"
+    },
+    {
+      "source": "mcp_session",
+      "target": "mcp_transport",
+      "label": "sends JSON-RPC messages over"
+    },
+    {
+      "source": "fake_mcp_transport",
+      "target": "mcp_transport",
+      "label": "implements"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "connector_registry",
+      "label": "registered within"
+    },
+    {
+      "source": "connector_analyzer",
+      "target": "connector_registry",
+      "label": "inspects connector via"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "activity_store",
+      "label": "audits tool executions to"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "security_policy",
+      "label": "respects decisions from"
+    }
+  ]
+}

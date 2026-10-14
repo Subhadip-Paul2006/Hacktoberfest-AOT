@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SŪTRA Local Runtime and Control Plane",
+    "subtitle": "Repository-backed view of the local processes and their owned state",
+    "output": "sutra-runtime.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "ae49ab5b9faefd74796ae6cc9ce0284ee425c62d"
+    }
+  },
+  "components": [
+    { "id": "runtime", "type": "backend", "label": "Local Runtime", "sublabel": "loopback API and command dispatch", "pos": [300, 70], "size": [190, 72], "sources": [{ "path": "sutra/runtime.py", "line": 97, "end_line": 124 }] },
+    { "id": "runtime-db", "type": "database", "label": "Runtime SQLite", "sublabel": "state.sqlite3", "pos": [40, 220], "size": [190, 72], "sources": [{ "path": "sutra/state.py", "line": 7, "end_line": 16 }] },
+    { "id": "connection", "type": "backend", "label": "Connection Manager", "sublabel": "optional configured gateway session", "pos": [300, 220], "size": [190, 72], "sources": [{ "path": "sutra/connection.py", "line": 22, "end_line": 49 }] },
+    { "id": "agent-registry", "type": "backend", "label": "Agent Registry", "sublabel": "adapter lookup", "pos": [560, 220], "size": [190, 72], "sources": [{ "path": "sutra/agents/registry.py", "line": 73, "end_line": 90 }] },
+    { "id": "agent-manager", "type": "backend", "label": "Agent Manager", "sublabel": "session lifecycle and events", "pos": [820, 220], "size": [190, 72], "sources": [{ "path": "sutra/agents/manager.py", "line": 69, "end_line": 84 }] },
+    { "id": "supervisor", "type": "backend", "label": "Agent Supervisor", "sublabel": "session observation and bounded recovery", "pos": [1080, 220], "size": [190, 72], "sources": [{ "path": "sutra/agents/supervisor.py", "line": 114, "end_line": 143 }] },
+    { "id": "control-plane", "type": "backend", "label": "Control Plane", "sublabel": "pairing, device sessions, policy", "pos": [300, 400], "size": [190, 72], "sources": [{ "path": "sutra/control_plane.py", "line": 377, "end_line": 408 }] },
+    { "id": "control-db", "type": "database", "label": "Control Plane SQLite", "sublabel": "store, policy, activity share one connection", "pos": [560, 400], "size": [190, 72], "sources": [{ "path": "sutra/control_plane.py", "line": 401, "end_line": 407 }] },
+    { "id": "policy", "type": "backend", "label": "Policy Engine", "sublabel": "persistent policy plus session grants", "pos": [820, 400], "size": [190, 72], "sources": [{ "path": "sutra/policy_engine.py", "line": 43, "end_line": 56 }] },
+    { "id": "activity", "type": "backend", "label": "Activity Store", "sublabel": "operational history on shared database", "pos": [1080, 400], "size": [190, 72], "sources": [{ "path": "sutra/activity_store.py", "line": 56, "end_line": 79 }] },
+    { "id": "gateway", "type": "external", "label": "Configured Gateway", "sublabel": "external deployment; optional", "pos": [40, 70], "size": [190, 72], "sources": [{ "path": "sutra/runtime.py", "line": 98, "end_line": 118 }] },
+    { "id": "telegram-bot", "type": "backend", "label": "Telegram Bot Adapter", "sublabel": "optional injected app", "pos": [40, 400], "size": [190, 72], "sources": [{ "path": "sutra/apps/telegram/bot.py", "line": 73, "end_line": 100 }, { "path": "sutra/control_plane.py", "line": 968, "end_line": 984 }] }
+  ],
+  "connections": [
+    { "id": "runtime-state", "from": "runtime", "to": "runtime-db", "label": "creates and uses local state" },
+    { "id": "runtime-connection", "from": "runtime", "to": "connection", "label": "constructs" },
+    { "id": "runtime-gateway", "from": "connection", "to": "gateway", "label": "only when configured", "variant": "dashed" },
+    { "id": "runtime-registry", "from": "runtime", "to": "agent-registry", "label": "constructs" },
+    { "id": "runtime-manager", "from": "runtime", "to": "agent-manager", "label": "constructs" },
+    { "id": "runtime-supervisor", "from": "runtime", "to": "supervisor", "label": "constructs and wires events" },
+    { "id": "cp-db", "from": "control-plane", "to": "control-db" },
+    { "id": "cp-policy", "from": "control-plane", "to": "policy", "label": "constructs over shared database" },
+    { "id": "cp-activity", "from": "control-plane", "to": "activity", "label": "constructs over shared database" },
+    { "id": "cp-telegram", "from": "telegram-bot", "to": "control-plane" }
+  ]
+}

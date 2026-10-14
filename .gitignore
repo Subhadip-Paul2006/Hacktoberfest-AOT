@@ -1,0 +1,34 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+agentbridge_local.egg-info/
+*.sqlite3*
+.sutra/
+.dev-certs/
+*.spec
+scratch/
+certs/
+nul
+# Test disposable artifacts & temporary repositories
+tests/scratch/
+test_scratch/
+*.test_git/
+.test_repo/
+# Multipart export temporary artifacts
+*.part-*
+sutra_exports/
+
+# AI agent and tooling artifacts
+.agents/
+.codex/
+.gemini/
+graphify-out/
+GEMINI.md
+PHASES.md

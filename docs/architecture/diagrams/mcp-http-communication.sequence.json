@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Streamable HTTP Request & Streaming Sequence",
+    "subtitle": "JSON-RPC POST, Session Correlation, Streamable SSE Response & ActivityStore Auditing",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-http-communication.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-7-mcp-http"
+    },
+    "description": "Trace of a request/response cycle over the remote MCP HTTP transport. Details HTTP POST transmission with injected authentication headers, server session identification (mcp-session-id), direct JSON vs streaming SSE response parsing, and ActivityStore auditing."
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "label": "Agent / ControlPlane",
+      "kind": "actor",
+      "description": "Caller invoking a tool or resource on the MCP connector."
+    },
+    {
+      "id": "connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp)",
+      "kind": "adapter",
+      "description": "AgentBridge connector handling parameter scrubbing and activity recording."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "kind": "database",
+      "description": "Local SQLite audit trail storing tool_calls records."
+    },
+    {
+      "id": "client",
+      "label": "MCPClient\n(sutra/connectors/mcp)",
+      "kind": "service",
+      "description": "Domain MCP client orchestrating requests and timeouts."
+    },
+    {
+      "id": "transport",
+      "label": "HttpMCPTransport\n(sutra/connectors/mcp/http.py)",
+      "kind": "transport",
+      "description": "Remote HTTP transport framing JSON-RPC POST requests and consuming responses."
+    },
+    {
+      "id": "remote_server",
+      "label": "Remote Server\n(Streamable HTTP / SSE Endpoint)",
+      "kind": "external",
+      "description": "Remote MCP server endpoint processing requests and delivering results."
+    }
+  ],
+  "steps": [
+    {
+      "from": "caller",
+      "to": "connector",
+      "message": "execute(ConnectorRequest(operation='tool:echo', parameters={'msg': 'hello'}))",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "record_tool_call(request_id, 'mcp.remote.echo', arguments={'msg': 'hello'}, status='running')",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "client",
+      "message": "call_tool(name='echo', arguments={'msg': 'hello'})",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "transport",
+      "message": "send_request('tools/call', {'name': 'echo', 'arguments': {'msg': 'hello'}})",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "transport",
+      "message": "inject auth headers, attach mcp-session-id if present",
+      "kind": "internal"
+    },
+    {
+      "from": "transport",
+      "to": "remote_server",
+      "message": "POST /mcp (Content-Type: application/json, Accept: application/json, text/event-stream)",
+      "kind": "async"
+    },
+    {
+      "from": "remote_server",
+      "to": "transport",
+      "message": "HTTP 200 OK (Content-Type: text/event-stream, mcp-session-id: sess_123)",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "transport",
+      "message": "read SSE chunk: 'event: message\\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{...}}\\n\\n'",
+      "kind": "internal"
+    },
+    {
+      "from": "transport",
+      "to": "client",
+      "message": "return {'content': [{'type': 'text', 'text': 'Echo: hello'}]}",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "connector",
+      "message": "return MCPToolCallResult(content=[...], is_error=False)",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "complete_tool_call(request_id, status='success', duration_ms=42.0)",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "caller",
+      "message": "return ConnectorResult.ok(content='Echo: hello')",
+      "kind": "async"
+    }
+  ]
+}

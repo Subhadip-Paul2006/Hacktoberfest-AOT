@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "title": "AgentBridge — GitHub Collaboration Architecture",
+    "subtitle": "Phase 6B.5 Remote PR Management, Code Review & CI Observability",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-collaboration.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6b.5-github-collaboration"
+    },
+    "description": "Architectural model reflecting clean separation between Local Git operations (.git on workstation) and remote GitHub REST services (PRs, reviews, comments, CI runs, logs, and releases) gated by PermissionEngine and secret redaction."
+  },
+  "components": [
+    {
+      "id": "telegram_chatops",
+      "label": "Telegram ChatOps UI\n(sutra/apps/telegram/formatting.py)",
+      "tier": "presentation",
+      "description": "Renders GitHub collaboration hub, PR list, PR detail, changed files, comment threads, review badges, CI runs, logs, and guarded merge dialogs."
+    },
+    {
+      "id": "telegram_callbacks",
+      "label": "Telegram Callback Handler\n(sutra/apps/telegram/callbacks.py)",
+      "tier": "presentation",
+      "description": "Routes user callbacks, coordinates permission checks before executing high-risk mutations, and guards against stale/duplicate actions."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane Gateway\n(sutra/control_plane.py)",
+      "tier": "gateway",
+      "description": "Validates git.pr_* and git.ci_* command schemas and dispatches authenticated frames over TLS WebSocket."
+    },
+    {
+      "id": "runtime_dispatch",
+      "label": "LocalRuntime Dispatcher\n(sutra/runtime.py)",
+      "tier": "runtime",
+      "description": "Enforces workspace boundaries, inspects remote topology, and routes commands to Local Git and GitHub services."
+    },
+    {
+      "id": "local_git_service",
+      "label": "Local Git Service\n(sutra/git/local.py)",
+      "tier": "core",
+      "description": "Source of truth for local repository state: status, diff, branches, staging, commits, and pushes."
+    },
+    {
+      "id": "github_service",
+      "label": "GitHub REST Service\n(sutra/git/github.py)",
+      "tier": "integration",
+      "description": "Handles remote collaboration: PR lifecycle, reviews, comments, merge API, CI runs, tail logs, and releases."
+    },
+    {
+      "id": "pr_subsystem",
+      "label": "Pull Requests\n(sutra/git/models.py: GitHubPRDetails)",
+      "tier": "integration",
+      "description": "Paginated PR listing, structured inspection, changed files summary, and guarded merge execution."
+    },
+    {
+      "id": "review_comment_subsystem",
+      "label": "Reviews & Comments\n(sutra/git/models.py: GitHubReviewSummary)",
+      "tier": "integration",
+      "description": "Inspection of reviewer approval states and safe discussion comment posting."
+    },
+    {
+      "id": "ci_actions_subsystem",
+      "label": "Checks & Actions\n(sutra/git/models.py: GitHubWorkflowRun)",
+      "tier": "integration",
+      "description": "GitHub Actions workflow run tracking, tail-truncated log viewing, and authorized rerun/cancel."
+    },
+    {
+      "id": "releases_subsystem",
+      "label": "Releases & Tags\n(sutra/git/models.py: GitHubReleaseInfo)",
+      "tier": "integration",
+      "description": "Read-only inspection of repository releases, tags, and publication timestamps."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine & PolicyStore\n(sutra/permissions.py)",
+      "tier": "security",
+      "description": "Enforces risk tiers (LOW for reads, HIGH for comments/rerun/cancel, GUARDED HIGH for merge with ALLOW_ONCE requirement)."
+    },
+    {
+      "id": "redaction_filter",
+      "label": "Secret Redaction Filter\n(sutra/redaction.py)",
+      "tier": "security",
+      "description": "Sanitizes tokens, credentials, and private keys from diffs, comments, and CI logs before transmission."
+    }
+  ],
+  "relations": [
+    { "from": "telegram_chatops", "to": "telegram_callbacks", "label": "User callback interactions" },
+    { "from": "telegram_callbacks", "to": "permission_engine", "label": "assess_risk & check_permission" },
+    { "from": "telegram_callbacks", "to": "control_plane", "label": "dispatch_command('git.pr_*' / 'git.ci_*')" },
+    { "from": "control_plane", "to": "runtime_dispatch", "label": "Authenticated WebSocket Frame" },
+    { "from": "runtime_dispatch", "to": "local_git_service", "label": "Local repository operations" },
+    { "from": "runtime_dispatch", "to": "github_service", "label": "Remote GitHub operations" },
+    { "from": "github_service", "to": "pr_subsystem", "label": "Manage PRs and changed files" },
+    { "from": "github_service", "to": "review_comment_subsystem", "label": "Manage reviews and comments" },
+    { "from": "github_service", "to": "ci_actions_subsystem", "label": "Manage workflow runs and logs" },
+    { "from": "github_service", "to": "releases_subsystem", "label": "Query published releases" },
+    { "from": "github_service", "to": "redaction_filter", "label": "Filter secrets from logs and diffs" }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "title": "AgentBridge — Connector Contract & Execution Architecture",
+    "subtitle": "Provider-Neutral Boundary for MCP, REST, and CLI Integrations",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/connector-architecture.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-2-connector-contract"
+    },
+    "description": "Architectural boundary and execution flow decoupling callers from concrete integration providers (MCP, REST, CLI), routing requests through permission and resilience boundaries, and recording operational history via universal request_id correlation."
+  },
+  "states": [
+    {
+      "id": "caller_init",
+      "label": "Caller Submits Request",
+      "kind": "start",
+      "description": "Agent runtime, ChatOps handler, or automated tool initiates a ConnectorRequest carrying a unique request_id, operation, and parameters."
+    },
+    {
+      "id": "permission_check",
+      "label": "PermissionEngine Verification",
+      "kind": "decision",
+      "description": "Caller checks operation against PolicyEngine rules before invocation. Operation may be allowed, denied, or queued for operator approval."
+    },
+    {
+      "id": "permission_denied",
+      "label": "Permission Denied",
+      "kind": "end",
+      "description": "Operation halted by security policy. Emits permission event to ActivityStore and returns authorization error."
+    },
+    {
+      "id": "connector_boundary",
+      "label": "Connector Contract Boundary",
+      "kind": "step",
+      "description": "Caller invokes connector.execute(request). Abstract interface enforces capability declaration and connected state."
+    },
+    {
+      "id": "capability_guard",
+      "label": "Capability Check",
+      "kind": "decision",
+      "description": "Validates that the connector explicitly declares the capability required by the operation (e.g. tool_execution, discovery, read, write)."
+    },
+    {
+      "id": "capability_missing",
+      "label": "Capability Error",
+      "kind": "end",
+      "description": "Rejects request with ConnectorInvalidRequestError without invoking downstream provider."
+    },
+    {
+      "id": "resilience_wrapper",
+      "label": "Centralized Resilience Execution",
+      "kind": "step",
+      "description": "Operation executes through shared with_timeout_and_retry and CircuitBreaker infrastructure."
+    },
+    {
+      "id": "provider_transport",
+      "label": "Provider Implementation",
+      "kind": "step",
+      "description": "Concrete transport adapter (future MCP stdio/HTTP, REST client, CLI process) executes the native protocol call."
+    },
+    {
+      "id": "result_normalization",
+      "label": "Result Normalization & Redaction",
+      "kind": "step",
+      "description": "Translates provider response into provider-neutral ConnectorResult, redacting secrets from content and metadata."
+    },
+    {
+      "id": "activity_correlation",
+      "label": "ActivityStore Telemetry",
+      "kind": "step",
+      "description": "Records connector_events and tool_calls into shared SQLite database using universal request_id correlation."
+    },
+    {
+      "id": "caller_return",
+      "label": "Deliver Normalized Result",
+      "kind": "end",
+      "description": "Returns ConnectorResult to calling agent or ChatOps pipeline."
+    }
+  ],
+  "transitions": [
+    { "from": "caller_init", "to": "permission_check" },
+    { "from": "permission_check", "to": "connector_boundary", "label": "ALLOW" },
+    { "from": "permission_check", "to": "permission_denied", "label": "DENY" },
+    { "from": "connector_boundary", "to": "capability_guard" },
+    { "from": "capability_guard", "to": "resilience_wrapper", "label": "Supported" },
+    { "from": "capability_guard", "to": "capability_missing", "label": "Unsupported" },
+    { "from": "resilience_wrapper", "to": "provider_transport" },
+    { "from": "provider_transport", "to": "result_normalization" },
+    { "from": "result_normalization", "to": "activity_correlation" },
+    { "from": "activity_correlation", "to": "caller_return" }
+  ]
+}

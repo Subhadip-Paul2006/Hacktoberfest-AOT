@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "title": "AgentBridge — Supabase MCP Authentication & Connection Sequence",
+    "subtitle": "Interactive OAuth 2.0 PKCE / Headless PAT, OS Keyring Storage & Handshake",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/supabase-mcp-auth-flow.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8c-supabase-mcp"
+    },
+    "description": "Trace of the interactive OAuth 2.0 PKCE and headless PAT authentication setup for the Supabase Remote MCP connector. Illustrates code challenge generation, local loopback listener startup, browser authorization redirect, token exchange, OS Keyring persistence, and Streamable HTTP MCP handshake."
+  },
+  "participants": [
+    {
+      "id": "user",
+      "label": "User / Developer",
+      "kind": "actor",
+      "description": "Human developer running AgentBridge CLI commands."
+    },
+    {
+      "id": "cli",
+      "label": "AgentBridge CLI\n(sutra/connectors/cli.py)",
+      "kind": "ui",
+      "description": "CLI subcommands for connector administration."
+    },
+    {
+      "id": "oauth_client",
+      "label": "MCPOAuthClient\n(sutra/connectors/mcp/oauth.py)",
+      "kind": "service",
+      "description": "Reusable OAuth PKCE orchestrator."
+    },
+    {
+      "id": "loopback",
+      "label": "Loopback Server\n(127.0.0.1:<port>)",
+      "kind": "service",
+      "description": "Transient local HTTP server capturing OAuth redirect."
+    },
+    {
+      "id": "browser",
+      "label": "Web Browser",
+      "kind": "external",
+      "description": "User browser for Supabase account authorization."
+    },
+    {
+      "id": "supabase_oauth",
+      "label": "Supabase OAuth\n(api.supabase.com)",
+      "kind": "external",
+      "description": "Official Supabase OAuth 2.0 authorization and token server."
+    },
+    {
+      "id": "cred_provider",
+      "label": "SupabaseCredentialProvider\n(sutra/credentials.py)",
+      "kind": "security",
+      "description": "Token resolution and refresh manager."
+    },
+    {
+      "id": "keyring",
+      "label": "OS Keyring",
+      "kind": "database",
+      "description": "Secure OS credential storage."
+    },
+    {
+      "id": "connector",
+      "label": "SupabaseMCPConnector\n(sutra/connectors/mcp/supabase.py)",
+      "kind": "adapter",
+      "description": "Supabase domain connector adapter."
+    },
+    {
+      "id": "remote_mcp",
+      "label": "Supabase Remote MCP\n(mcp.supabase.com/mcp)",
+      "kind": "external",
+      "description": "Official hosted Streamable HTTP MCP server."
+    }
+  ],
+  "messages": [
+    {
+      "from": "user",
+      "to": "cli",
+      "label": "sutra connectors auth supabase-mcp --oauth",
+      "kind": "call"
+    },
+    {
+      "from": "cli",
+      "to": "oauth_client",
+      "label": "authorize_interactive()",
+      "kind": "call"
+    },
+    {
+      "from": "oauth_client",
+      "to": "oauth_client",
+      "label": "generate_pkce_pair() -> verifier, challenge",
+      "kind": "call"
+    },
+    {
+      "from": "oauth_client",
+      "to": "loopback",
+      "label": "start() listener on 127.0.0.1:<port>",
+      "kind": "call"
+    },
+    {
+      "from": "oauth_client",
+      "to": "browser",
+      "label": "open(https://api.supabase.com/v1/oauth/authorize?...)",
+      "kind": "call"
+    },
+    {
+      "from": "browser",
+      "to": "supabase_oauth",
+      "label": "GET /v1/oauth/authorize?code_challenge=...&state=...",
+      "kind": "call"
+    },
+    {
+      "from": "supabase_oauth",
+      "to": "browser",
+      "label": "Prompt user for Supabase login & project authorization",
+      "kind": "return"
+    },
+    {
+      "from": "user",
+      "to": "browser",
+      "label": "Grants project access",
+      "kind": "call"
+    },
+    {
+      "from": "browser",
+      "to": "loopback",
+      "label": "GET /callback?code=AUTH_CODE&state=VALID_STATE",
+      "kind": "call"
+    },
+    {
+      "from": "loopback",
+      "to": "browser",
+      "label": "200 OK (Authorization successful HTML page)",
+      "kind": "return"
+    },
+    {
+      "from": "loopback",
+      "to": "oauth_client",
+      "label": "Returns auth code & state",
+      "kind": "return"
+    },
+    {
+      "from": "oauth_client",
+      "to": "loopback",
+      "label": "stop() loopback listener",
+      "kind": "call"
+    },
+    {
+      "from": "oauth_client",
+      "to": "supabase_oauth",
+      "label": "POST /v1/oauth/token {code, code_verifier}",
+      "kind": "call"
+    },
+    {
+      "from": "supabase_oauth",
+      "to": "oauth_client",
+      "label": "200 OK {access_token, refresh_token, expires_in}",
+      "kind": "return"
+    },
+    {
+      "from": "oauth_client",
+      "to": "cred_provider",
+      "label": "store_oauth_token(OAuthToken)",
+      "kind": "call"
+    },
+    {
+      "from": "cred_provider",
+      "to": "keyring",
+      "label": "set_password('supabase-mcp:id', serialized_token)",
+      "kind": "call"
+    },
+    {
+      "from": "cred_provider",
+      "to": "cli",
+      "label": "Credentials stored successfully (masked preview)",
+      "kind": "return"
+    },
+    {
+      "from": "cli",
+      "to": "connector",
+      "label": "connect()",
+      "kind": "call"
+    },
+    {
+      "from": "connector",
+      "to": "cred_provider",
+      "label": "resolve_token() -> Bearer token",
+      "kind": "call"
+    },
+    {
+      "from": "connector",
+      "to": "remote_mcp",
+      "label": "POST /mcp?project_ref=...&read_only=true [initialize]",
+      "kind": "call"
+    },
+    {
+      "from": "remote_mcp",
+      "to": "connector",
+      "label": "200 OK [protocolVersion: 2024-11-05, capabilities]",
+      "kind": "return"
+    },
+    {
+      "from": "connector",
+      "to": "cli",
+      "label": "Session READY, project access verified",
+      "kind": "return"
+    },
+    {
+      "from": "cli",
+      "to": "user",
+      "label": "Authentication and connection test passed",
+      "kind": "return"
+    }
+  ]
+}

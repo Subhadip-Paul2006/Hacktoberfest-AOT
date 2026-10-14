@@ -1,0 +1,174 @@
+{
+  "meta": {
+    "title": "AgentBridge — GitHub MCP Connector Setup & Authentication Sequence",
+    "subtitle": "Interactive CLI Configuration, Keyring Storage, Safe Connection Probe & Discovery",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-mcp-auth-setup.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8a-github-mcp"
+    },
+    "description": "Trace of the interactive setup and authentication verification sequence for GitHub Remote MCP connector. Details fine-grained PAT entry with masking (getpass), OS Keyring storage, handshake initialization with Bearer header, capability discovery, and sanitized reporting."
+  },
+  "participants": [
+    {
+      "id": "user",
+      "label": "User / Developer",
+      "kind": "actor",
+      "description": "Human developer running AgentBridge CLI commands."
+    },
+    {
+      "id": "cli",
+      "label": "AgentBridge CLI\n(sutra/connectors/cli.py)",
+      "kind": "ui",
+      "description": "CLI subcommands for connector administration."
+    },
+    {
+      "id": "cred_provider",
+      "label": "GitHubCredentialProvider\n(sutra/credentials.py)",
+      "kind": "security",
+      "description": "Keyring & environment-aware credential resolution provider."
+    },
+    {
+      "id": "keyring",
+      "label": "OS Keyring\n(KeyringBackend)",
+      "kind": "database",
+      "description": "Operating system credential manager."
+    },
+    {
+      "id": "registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "kind": "service",
+      "description": "Central registry managing connector states and metadata in SQLite."
+    },
+    {
+      "id": "connector",
+      "label": "GitHubMCPConnector\n(sutra/connectors/mcp/github.py)",
+      "kind": "adapter",
+      "description": "GitHub MCP adapter."
+    },
+    {
+      "id": "transport",
+      "label": "HttpMCPTransport\n(sutra/connectors/mcp/http.py)",
+      "kind": "transport",
+      "description": "Streamable HTTP transport."
+    },
+    {
+      "id": "remote_server",
+      "label": "GitHub Remote MCP Server\n(https://api.githubcopilot.com/mcp/)",
+      "kind": "external",
+      "description": "Official GitHub Remote MCP HTTPS endpoint."
+    }
+  ],
+  "steps": [
+    {
+      "from": "user",
+      "to": "cli",
+      "message": "sutra connectors add github-mcp",
+      "kind": "sync"
+    },
+    {
+      "from": "cli",
+      "to": "registry",
+      "message": "register(GitHubMCPConnector(connector_id='github-mcp'))",
+      "kind": "async"
+    },
+    {
+      "from": "registry",
+      "to": "cli",
+      "message": "ConnectorDescriptor(status=DISCONNECTED, transport=streamable_http)",
+      "kind": "return"
+    },
+    {
+      "from": "cli",
+      "to": "user",
+      "message": "Connector registered. Explains PAT scopes & setup workflow.",
+      "kind": "return"
+    },
+    {
+      "from": "user",
+      "to": "cli",
+      "message": "sutra connectors auth github-mcp (masked getpass prompt)",
+      "kind": "sync"
+    },
+    {
+      "from": "cli",
+      "to": "cred_provider",
+      "message": "store_token(token)",
+      "kind": "sync"
+    },
+    {
+      "from": "cred_provider",
+      "to": "keyring",
+      "message": "set_password('sutra:github-mcp', token)",
+      "kind": "sync"
+    },
+    {
+      "from": "keyring",
+      "to": "cred_provider",
+      "message": "Credential stored in OS Keyring",
+      "kind": "return"
+    },
+    {
+      "from": "cli",
+      "to": "user",
+      "message": "Token saved safely in OS Keyring (source=KEYRING, masked=ghp_...XXXX)",
+      "kind": "return"
+    },
+    {
+      "from": "user",
+      "to": "cli",
+      "message": "sutra connectors test github-mcp",
+      "kind": "sync"
+    },
+    {
+      "from": "cli",
+      "to": "connector",
+      "message": "connect()",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "cred_provider",
+      "message": "get_auth_headers() -> {'Authorization': 'Bearer <token>'}",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "transport",
+      "message": "send_request('initialize', init_params)",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "remote_server",
+      "message": "POST /mcp with Bearer PAT",
+      "kind": "network"
+    },
+    {
+      "from": "remote_server",
+      "to": "transport",
+      "message": "200 OK (serverInfo, protocolVersion, capabilities)",
+      "kind": "network"
+    },
+    {
+      "from": "transport",
+      "to": "connector",
+      "message": "Handshake successful (state=READY)",
+      "kind": "return"
+    },
+    {
+      "from": "connector",
+      "to": "cli",
+      "message": "Connection healthy, latency=42ms",
+      "kind": "return"
+    },
+    {
+      "from": "cli",
+      "to": "user",
+      "message": "GitHub MCP Connector is READY and verified.",
+      "kind": "return"
+    }
+  ]
+}

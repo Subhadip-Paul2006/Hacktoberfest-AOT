@@ -1,0 +1,145 @@
+{
+  "meta": {
+    "title": "AgentBridge — Reliability & Resilience Architecture",
+    "subtitle": "Phase 6C Unified Resilience Boundary, Guarded Execution & Fault Isolation",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/reliability-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6c-reliability-hardening"
+    },
+    "description": "Architectural model demonstrating the strict ordering: Telegram -> Control Plane -> PermissionEngine -> Git Services -> Resilience Boundary -> GitHub REST. Local Git runs isolated from GitHub provider failures."
+  },
+  "components": [
+    {
+      "id": "telegram_chatops",
+      "label": "Telegram ChatOps UI\n(sutra/apps/telegram/formatting.py)",
+      "tier": "presentation",
+      "description": "Renders safe, sanitized mobile status cards, retry prompts with Retry-After timers, and degraded mode banners."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane Gateway\n(sutra/control_plane.py)",
+      "tier": "gateway",
+      "description": "Validates command frames, manages TLS WebSocket connections, and dispatches authenticated requests."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine\n(sutra/permissions.py)",
+      "tier": "security",
+      "description": "Authoritative risk evaluator: must evaluate and authorize operations BEFORE any resilience, retry, or cache execution."
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime Dispatcher\n(sutra/runtime.py)",
+      "tier": "runtime",
+      "description": "Sandbox boundary and executor routing commands to either Local Git or GitHub REST services."
+    },
+    {
+      "id": "local_git_service",
+      "label": "Local Git Service\n(sutra/git/local.py)",
+      "tier": "core",
+      "description": "Local repository operations with 30s subprocess timeout, prompt suppression (GIT_TERMINAL_PROMPT=0), and lock conflict detection."
+    },
+    {
+      "id": "github_service",
+      "label": "GitHub Service Adapter\n(sutra/git/github.py)",
+      "tier": "integration",
+      "description": "Provides high-level PR, CI, and release collaboration workflows, routing all calls through the resilience boundary."
+    },
+    {
+      "id": "resilience_boundary",
+      "label": "GitHub Resilience Boundary\n(sutra/git/resilience.py)",
+      "tier": "resilience",
+      "description": "Centralized execution perimeter encapsulating rate limiting, circuit breaker, retry policy, bulkhead, cache, and idempotency."
+    },
+    {
+      "id": "circuit_breaker",
+      "label": "GitHub Circuit Breaker\n(sutra/resilience.py: CircuitBreaker)",
+      "tier": "resilience",
+      "description": "State machine (CLOSED -> OPEN -> HALF_OPEN) protecting against cascading failures during GitHub outages."
+    },
+    {
+      "id": "rate_limiter",
+      "label": "Hierarchical Rate Limiter\n(sutra/resilience.py: SlidingWindowRateLimiter)",
+      "tier": "resilience",
+      "description": "3-tier sliding window limiter: user bucket (30/m), repo bucket (60/m), and global safety cap (120/m)."
+    },
+    {
+      "id": "cache_store",
+      "label": "Cache Store\n(sutra/cache.py: CacheStore)",
+      "tier": "cache",
+      "description": "In-memory query cache scoped by repository and auth token, with automatic prefix invalidation on mutations."
+    },
+    {
+      "id": "idempotency_store",
+      "label": "Idempotency Store\n(sutra/resilience.py: IdempotencyStore)",
+      "tier": "resilience",
+      "description": "Deduplication store tracking mutation states (PROCESSING, COMPLETED, FAILED) to prevent double-click mutations."
+    },
+    {
+      "id": "github_rest",
+      "label": "GitHub REST API\n(api.github.com)",
+      "tier": "external",
+      "description": "Upstream GitHub REST endpoints for PRs, issues, actions, and releases."
+    }
+  ],
+  "connections": [
+    {
+      "from": "telegram_chatops",
+      "to": "control_plane",
+      "label": "Authenticated ChatOps Command"
+    },
+    {
+      "from": "control_plane",
+      "to": "permission_engine",
+      "label": "Risk Assessment (Pre-Flight)"
+    },
+    {
+      "from": "permission_engine",
+      "to": "local_runtime",
+      "label": "Authorized Operation Dispatch"
+    },
+    {
+      "from": "local_runtime",
+      "to": "local_git_service",
+      "label": "Local Git Subprocess (Timeout: 30s)"
+    },
+    {
+      "from": "local_runtime",
+      "to": "github_service",
+      "label": "Remote GitHub Collaboration"
+    },
+    {
+      "from": "github_service",
+      "to": "resilience_boundary",
+      "label": "Resilience Execution Wrapper"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "idempotency_store",
+      "label": "Deduplicate Mutations"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "circuit_breaker",
+      "label": "Availability Check / Fast-Fail"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "rate_limiter",
+      "label": "Sliding Window Check"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "cache_store",
+      "label": "Read Hit / Invalidate Prefix"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "github_rest",
+      "label": "Bulkhead Semaphore HTTP (Max: 10)"
+    }
+  ]
+}

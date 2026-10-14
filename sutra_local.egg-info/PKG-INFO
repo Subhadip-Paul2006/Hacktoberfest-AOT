@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: sutra-local
+Version: 0.1.0
+Summary: Secure local foundation for the SŪTRA runtime
+Requires-Python: >=3.11
+Requires-Dist: fastapi<1,>=0.115
+Requires-Dist: httpx<1,>=0.27
+Requires-Dist: python-dotenv<2,>=1
+Requires-Dist: uvicorn<1,>=0.30
+Requires-Dist: websockets<16,>=14
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: rich<14,>=13.0.0
+Provides-Extra: build
+Requires-Dist: pyinstaller<7,>=6; extra == "build"
+Provides-Extra: dev
+Requires-Dist: cryptography<47,>=42; extra == "dev"

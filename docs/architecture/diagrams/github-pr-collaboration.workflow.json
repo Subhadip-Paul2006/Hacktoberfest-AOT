@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "title": "AgentBridge — PR Collaboration Workflow",
+    "subtitle": "End-to-End Mobile Review, Discussion, CI Verification & Guarded Merge",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-pr-collaboration.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6b.5-github-collaboration"
+    },
+    "description": "Step-by-step workflow for mobile engineers inspecting PRs, reviewing changed files, checking review states, monitoring CI pipelines, viewing logs, and executing guarded merges."
+  },
+  "states": [
+    {
+      "id": "pr_created",
+      "label": "PR Created / Selected",
+      "kind": "start",
+      "description": "Operator selects a Pull Request from the paginated PR listing or opens it via /pr <num>."
+    },
+    {
+      "id": "inspect_overview",
+      "label": "Inspect PR Overview",
+      "kind": "step",
+      "description": "Examines title, state, branch topology, author, commit count, and lines changed."
+    },
+    {
+      "id": "review_files",
+      "label": "Review Changed Files",
+      "kind": "step",
+      "description": "Inspects bounded list of modified files, additions/deletions, and modification badges."
+    },
+    {
+      "id": "review_and_comments",
+      "label": "Review State & Comments",
+      "kind": "step",
+      "description": "Checks approvals or changes requested and views or posts discussion comments."
+    },
+    {
+      "id": "ci_checks",
+      "label": "CI / Actions Checks",
+      "kind": "step",
+      "description": "Monitors workflow run statuses; inspects tail-truncated build logs if failures occur."
+    },
+    {
+      "id": "decision_point",
+      "label": "Collaboration Decision",
+      "kind": "decision",
+      "description": "Determines whether to request revisions, rerun flaky tests, or proceed with PR merge."
+    },
+    {
+      "id": "revise_code",
+      "label": "Post Feedback / Revise",
+      "kind": "step",
+      "description": "Posts review comments to PR thread prompting developer or agent adjustments."
+    },
+    {
+      "id": "retest_ci",
+      "label": "Rerun CI Workflow",
+      "kind": "step",
+      "description": "Triggers workflow run rerun under explicit human authorization."
+    },
+    {
+      "id": "merge_preflight",
+      "label": "Merge Preflight Check",
+      "kind": "step",
+      "description": "Verifies live PR state, branch conflicts, and mergeability status against GitHub API."
+    },
+    {
+      "id": "permission_merge",
+      "label": "Human Merge Authorization",
+      "kind": "decision",
+      "description": "Explicit human authorization required for HIGH risk PR merge. Auto-merge is strictly forbidden."
+    },
+    {
+      "id": "execute_merge",
+      "label": "Execute Guarded Merge",
+      "kind": "end",
+      "description": "GitHub REST merge endpoint called with verified method (merge, squash, rebase)."
+    }
+  ],
+  "transitions": [
+    { "from": "pr_created", "to": "inspect_overview", "label": "Open PR Screen" },
+    { "from": "inspect_overview", "to": "review_files", "label": "Tap [📄 Files]" },
+    { "from": "review_files", "to": "review_and_comments", "label": "Tap [💬 Comments / 👥 Reviews]" },
+    { "from": "review_and_comments", "to": "ci_checks", "label": "Tap [⚙️ Checks]" },
+    { "from": "ci_checks", "to": "decision_point", "label": "Evaluate Overall State" },
+    { "from": "decision_point", "to": "revise_code", "label": "Changes Needed" },
+    { "from": "decision_point", "to": "retest_ci", "label": "CI Failed / Flaky" },
+    { "from": "decision_point", "to": "merge_preflight", "label": "Ready to Merge" },
+    { "from": "revise_code", "to": "inspect_overview", "label": "Feedback Submitted" },
+    { "from": "retest_ci", "to": "ci_checks", "label": "Rerun Triggered" },
+    { "from": "merge_preflight", "to": "permission_merge", "label": "Select Merge Mode" },
+    { "from": "permission_merge", "to": "execute_merge", "label": "Confirmed by Human" }
+  ]
+}

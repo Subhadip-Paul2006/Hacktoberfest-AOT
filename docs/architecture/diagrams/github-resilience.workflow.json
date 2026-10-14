@@ -1,0 +1,224 @@
+{
+  "meta": {
+    "title": "AgentBridge — GitHub Resilience Execution Workflow",
+    "subtitle": "Step-by-Step Flow Through Unified Resilience Perimeter",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-resilience.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6c-reliability-hardening"
+    },
+    "description": "Workflow illustrating how every authorized GitHub REST request passes through idempotency validation, circuit breaker, rate limiters, cache lookup, bulkhead execution, retry loops, and error normalization."
+  },
+  "states": [
+    {
+      "id": "op_received",
+      "label": "Authorized Operation Received",
+      "kind": "start",
+      "description": "Operation has already passed PermissionEngine authorization check."
+    },
+    {
+      "id": "check_idempotency",
+      "label": "Idempotency Check",
+      "kind": "decision",
+      "description": "If operation is a mutation, check in-memory IdempotencyStore for existing key."
+    },
+    {
+      "id": "return_dedup",
+      "label": "Return Deduplicated Result",
+      "kind": "step",
+      "description": "Return previously completed result or wait on in-flight processing future."
+    },
+    {
+      "id": "check_circuit",
+      "label": "Circuit Breaker Status",
+      "kind": "decision",
+      "description": "Inspect if github_rest circuit breaker is OPEN."
+    },
+    {
+      "id": "fast_fail_breaker",
+      "label": "Fast-Fail (Circuit OPEN)",
+      "kind": "step",
+      "description": "Fail fast in microseconds with CIRCUIT_OPEN error; serve stale cached data if permitted."
+    },
+    {
+      "id": "check_rate_limit",
+      "label": "Hierarchical Rate Limit Check",
+      "kind": "decision",
+      "description": "Evaluate sliding-window allowance across user, repo, and global buckets."
+    },
+    {
+      "id": "rate_limit_rejected",
+      "label": "Rate Limit Exceeded",
+      "kind": "step",
+      "description": "Reject request with RATE_LIMITED error and precise Retry-After wait duration."
+    },
+    {
+      "id": "check_cache",
+      "label": "Cache Lookup",
+      "kind": "decision",
+      "description": "If read operation, check CacheStore for unexpired response."
+    },
+    {
+      "id": "return_cache_hit",
+      "label": "Return Cached Response",
+      "kind": "step",
+      "description": "Return cached value immediately; increment cache_hits metric."
+    },
+    {
+      "id": "acquire_bulkhead",
+      "label": "Acquire Bulkhead Semaphore",
+      "kind": "step",
+      "description": "Acquire slot from asyncio.Semaphore(10) to bound concurrent HTTP requests."
+    },
+    {
+      "id": "http_request",
+      "label": "Execute GitHub REST Call",
+      "kind": "step",
+      "description": "Dispatch HTTP request with bounded connect and read timeouts."
+    },
+    {
+      "id": "evaluate_response",
+      "label": "Evaluate Response / Status",
+      "kind": "decision",
+      "description": "Check if response succeeded (2xx), is retriable (429, 5xx, timeout), or non-retriable (4xx)."
+    },
+    {
+      "id": "retry_backoff",
+      "label": "Calculate Backoff + Jitter",
+      "kind": "step",
+      "description": "Calculate exponential backoff with full jitter (or parse Retry-After header) and sleep before next attempt."
+    },
+    {
+      "id": "mutation_invalidation",
+      "label": "Cache Invalidation & Idempotency Complete",
+      "kind": "step",
+      "description": "Invalidate dependent cache prefixes (e.g. PR list, comments) and mark idempotency key COMPLETED."
+    },
+    {
+      "id": "populate_cache",
+      "label": "Populate Cache Store",
+      "kind": "step",
+      "description": "Store successful read response in CacheStore with configured TTL."
+    },
+    {
+      "id": "normalize_error",
+      "label": "Normalize Error & Redact Secrets",
+      "kind": "step",
+      "description": "Convert exception to GitHubResilienceError and strip all tokens and headers."
+    },
+    {
+      "id": "op_completed",
+      "label": "Return Result to Caller",
+      "kind": "end",
+      "description": "Deliver clean sanitized response or user-friendly error to Telegram ChatOps."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "op_received",
+      "to": "check_idempotency"
+    },
+    {
+      "from": "check_idempotency",
+      "to": "return_dedup",
+      "label": "Duplicate Found"
+    },
+    {
+      "from": "return_dedup",
+      "to": "op_completed"
+    },
+    {
+      "from": "check_idempotency",
+      "to": "check_circuit",
+      "label": "New Operation"
+    },
+    {
+      "from": "check_circuit",
+      "to": "fast_fail_breaker",
+      "label": "Breaker OPEN"
+    },
+    {
+      "from": "fast_fail_breaker",
+      "to": "op_completed"
+    },
+    {
+      "from": "check_circuit",
+      "to": "check_rate_limit",
+      "label": "Breaker CLOSED / HALF_OPEN"
+    },
+    {
+      "from": "check_rate_limit",
+      "to": "rate_limit_rejected",
+      "label": "Limit Exceeded"
+    },
+    {
+      "from": "rate_limit_rejected",
+      "to": "op_completed"
+    },
+    {
+      "from": "check_rate_limit",
+      "to": "check_cache",
+      "label": "Allowed"
+    },
+    {
+      "from": "check_cache",
+      "to": "return_cache_hit",
+      "label": "Cache Hit"
+    },
+    {
+      "from": "return_cache_hit",
+      "to": "op_completed"
+    },
+    {
+      "from": "check_cache",
+      "to": "acquire_bulkhead",
+      "label": "Cache Miss / Mutation"
+    },
+    {
+      "from": "acquire_bulkhead",
+      "to": "http_request"
+    },
+    {
+      "from": "http_request",
+      "to": "evaluate_response"
+    },
+    {
+      "from": "evaluate_response",
+      "to": "retry_backoff",
+      "label": "Transient Error (Attempts < Max)"
+    },
+    {
+      "from": "retry_backoff",
+      "to": "http_request"
+    },
+    {
+      "from": "evaluate_response",
+      "to": "mutation_invalidation",
+      "label": "Success (Mutation)"
+    },
+    {
+      "from": "mutation_invalidation",
+      "to": "op_completed"
+    },
+    {
+      "from": "evaluate_response",
+      "to": "populate_cache",
+      "label": "Success (Read)"
+    },
+    {
+      "from": "populate_cache",
+      "to": "op_completed"
+    },
+    {
+      "from": "evaluate_response",
+      "to": "normalize_error",
+      "label": "Failure (Retries Exhausted / 4xx)"
+    },
+    {
+      "from": "normalize_error",
+      "to": "op_completed"
+    }
+  ]
+}

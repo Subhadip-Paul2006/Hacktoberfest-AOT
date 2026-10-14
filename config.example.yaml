@@ -1,0 +1,82 @@
+# ==============================================================================
+# SŪTRA Workstation & Policy Configuration
+# File: ~/.sutra/config.yaml or ./config.yaml
+# ==============================================================================
+
+version: "1.0"
+
+# Registered workspaces (Strict Sandboxing)
+# Only explicitly listed directories can be accessed remotely.
+workspaces:
+  - id: "ws_netra"
+    alias: "NETRA"
+    path: "D:/Projects/NETRA"
+    is_git: true
+    description: "Core security monitoring and reconnaissance monorepo"
+    default_agent: "antigravity"
+
+  - id: "ws_drishti"
+    alias: "Drishti"
+    path: "D:/Projects/Drishti"
+    is_git: true
+    description: "Endpoint management and device telemetry agent"
+    default_agent: "cursor"
+
+  - id: "ws_lokkatha"
+    alias: "LokKatha"
+    path: "D:/Projects/LokKatha"
+    is_git: false
+    description: "Local data processing and generation workspace"
+    default_agent: "claude-code"
+
+# Permission & Security Policies
+security:
+  # Auto-approval rules for non-destructive operations
+  auto_approve:
+    enabled: true
+    max_risk_level: "LOW" # LOW commands like read-only git status, dir, ls
+    allowed_commands:
+      - "git status"
+      - "git diff"
+      - "pytest --collect-only"
+
+  # Dangerous commands requiring explicit, double-confirmed Telegram approval
+  restricted_commands:
+    - "rm -rf"
+    - "del /f /s /q"
+    - "format"
+    - "git push --force"
+    - "git reset --hard"
+    - "sudo"
+
+  # Excluded patterns never exposed or committed
+  sanitization_blacklist:
+    - "*.env*"
+    - "*secret*"
+    - "*credential*"
+    - "*.pem"
+    - "*.key"
+    - "id_rsa*"
+
+# Agent Adapters Configuration
+agents:
+  antigravity:
+    type: "cli"
+    command: "agy"
+    enabled: true
+    timeout_seconds: 3600
+
+  cursor:
+    type: "headless_api"
+    port: 9876
+    enabled: true
+
+  claude_code:
+    type: "cli"
+    command: "claude"
+    enabled: true
+
+  jules:
+    type: "remote_cloud"
+    cli_command: "jules"
+    enabled: false

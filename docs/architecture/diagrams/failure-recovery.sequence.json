@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "title": "AgentBridge — Failure Recovery & Unknown-Result Sequence",
+    "subtitle": "Transient Retries, Circuit Breaker Tripping, and Merge State Reconciliation",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/failure-recovery.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6c-reliability-hardening"
+    },
+    "description": "Sequence tracing transient failures, 429 rate limits, circuit breaker tripping, and unknown-result reconciliation when network timeouts occur during PR merge."
+  },
+  "participants": [
+    {
+      "id": "operator",
+      "label": "Telegram User",
+      "kind": "actor",
+      "description": "Mobile engineer initiating Git or GitHub ChatOps actions."
+    },
+    {
+      "id": "telegram_bot",
+      "label": "TelegramBotApp\n(sutra/apps/telegram)",
+      "kind": "service",
+      "description": "ChatOps presentation and callback target button manager."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine\n(sutra/permissions.py)",
+      "kind": "service",
+      "description": "Authorizes operations before resilience layer execution."
+    },
+    {
+      "id": "resilience_boundary",
+      "label": "Resilience Boundary\n(sutra/git/resilience.py)",
+      "kind": "service",
+      "description": "Orchestrates rate limiting, circuit breaker, retry loop, and idempotency."
+    },
+    {
+      "id": "github_api",
+      "label": "GitHub REST API\n(api.github.com)",
+      "kind": "integration",
+      "description": "Upstream GitHub endpoints experiencing latency or transient errors."
+    }
+  ],
+  "messages": [
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Click 'Merge PR #42' Callback Button"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "permission_engine",
+      "label": "assess_risk('git_pr_merge_execute')"
+    },
+    {
+      "from": "permission_engine",
+      "to": "telegram_bot",
+      "label": "Risk Approved (HIGH - explicit single-use target)"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "resilience_boundary",
+      "label": "execute('github.pr.merge', number=42)"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "github_api",
+      "label": "GET /repos/:owner/:repo/pulls/42 (Fresh Check)"
+    },
+    {
+      "from": "github_api",
+      "to": "resilience_boundary",
+      "label": "HTTP 200 (state=open, mergeable=true)"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "github_api",
+      "label": "PUT /repos/:owner/:repo/pulls/42/merge (Attempt 1)"
+    },
+    {
+      "from": "github_api",
+      "to": "resilience_boundary",
+      "label": "TimeoutException (Network drop before response)"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "resilience_boundary",
+      "label": "Unknown-Result Detected: Reconcile state first"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "github_api",
+      "label": "GET /repos/:owner/:repo/pulls/42 (Reconcile Check)"
+    },
+    {
+      "from": "github_api",
+      "to": "resilience_boundary",
+      "label": "HTTP 200 (merged=true, sha=abc12345)"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "resilience_boundary",
+      "label": "Reconciliation Succeeded: PR was merged!"
+    },
+    {
+      "from": "resilience_boundary",
+      "to": "telegram_bot",
+      "label": "Return GitHubMergeResult(success=True, reconciled=True)"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "Render '🟣 PR #42 merged successfully (reconciled after network timeout)'"
+    }
+  ]
+}

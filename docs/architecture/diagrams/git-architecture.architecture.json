@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "title": "AgentBridge — Safe Git & GitHub Architecture",
+    "subtitle": "Separation of Local Git Operations from Remote GitHub Services",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/git-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6-git"
+    },
+    "description": "Architectural model reflecting clean separation between Local Git operations (.git source of truth on workstation) and remote GitHub REST services, gated by centralized permission engine and workspace locks."
+  },
+  "components": [
+    {
+      "id": "telegram_chatops",
+      "label": "Telegram ChatOps UI\n(sutra/apps/telegram/formatting.py)",
+      "tier": "presentation",
+      "description": "Renders Git hub overview, status cards, bounded diffs, interactive mobile file staging, commit prompts, push confirmation, and PR triggers."
+    },
+    {
+      "id": "telegram_callbacks",
+      "label": "Telegram Callback Handler\n(sutra/apps/telegram/callbacks.py)",
+      "tier": "presentation",
+      "description": "Routes user callbacks, maintains file staging selections, coordinates permission checks before executing high-risk Git mutations."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane Gateway\n(sutra/control_plane.py)",
+      "tier": "gateway",
+      "description": "Enforces permission precedence policies, validates git.* command schemas, routes frames over authenticated TLS WebSocket connection."
+    },
+    {
+      "id": "runtime_dispatch",
+      "label": "LocalRuntime Dispatcher\n(sutra/runtime.py)",
+      "tier": "runtime",
+      "description": "Coordinates workspace lock enforcement, validates project boundaries, routes git.* commands to the clean AgentBridge Git Service layer."
+    },
+    {
+      "id": "sutra_git_service",
+      "label": "AgentBridge Git Service\n(sutra/git/__init__.py)",
+      "tier": "core",
+      "description": "Unified Git façade coordinating local subprocess adapters and remote GitHub API clients with structured data models."
+    },
+    {
+      "id": "local_git_adapter",
+      "label": "Local Git Adapter\n(sutra/git/local.py)",
+      "tier": "core",
+      "description": "Direct subprocess interface to local .git repository: porcelain v1 status parsing, branch inspection, staging, committing, and pushing."
+    },
+    {
+      "id": "github_adapter",
+      "label": "GitHub REST Adapter\n(sutra/git/github.py)",
+      "tier": "integration",
+      "description": "Async HTTP client managing GitHub pull request creation, remote URL parsing, and token detection (no GitHub MCP dependency in core)."
+    },
+    {
+      "id": "workspace_lock",
+      "label": "Workspace Lock Manager\n(sutra/workspace_lock.py)",
+      "tier": "security",
+      "description": "Prevents concurrent mutation conflicts between active agent file writes and human Git staging/commits."
+    },
+    {
+      "id": "permission_engine",
+      "label": "Permission & Policy Engine\n(sutra/permissions.py)",
+      "tier": "security",
+      "description": "Classifies Git risks (READ=LOW, STAGE=MEDIUM, COMMIT/PUSH/PR=HIGH, FORCE=CRITICAL) and enforces explicit human approval."
+    },
+    {
+      "id": "redaction_filter",
+      "label": "Secret Redaction Filter\n(sutra/redaction.py)",
+      "tier": "security",
+      "description": "Centralized regex sanitizer protecting secrets, tokens, and private keys in diffs and commit summaries before transmission."
+    }
+  ],
+  "relations": [
+    { "from": "telegram_chatops", "to": "telegram_callbacks", "label": "Inline button clicks" },
+    { "from": "telegram_callbacks", "to": "permission_engine", "label": "assess_risk & check_permission" },
+    { "from": "telegram_callbacks", "to": "control_plane", "label": "dispatch_command('git.*')" },
+    { "from": "control_plane", "to": "runtime_dispatch", "label": "TLS WebSocket Frame" },
+    { "from": "runtime_dispatch", "to": "workspace_lock", "label": "check_workspace_lock()" },
+    { "from": "runtime_dispatch", "to": "sutra_git_service", "label": "Invoke Git operations" },
+    { "from": "sutra_git_service", "to": "local_git_adapter", "label": "Local operations (status, diff, stage, commit, push)" },
+    { "from": "sutra_git_service", "to": "github_adapter", "label": "Remote operations (create PR, list PRs)" },
+    { "from": "local_git_adapter", "to": "redaction_filter", "label": "Sanitize & redact diff output" }
+  ]
+}

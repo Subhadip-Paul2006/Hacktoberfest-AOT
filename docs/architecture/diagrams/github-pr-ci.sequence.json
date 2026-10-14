@@ -1,0 +1,205 @@
+{
+  "meta": {
+    "title": "AgentBridge — PR & CI Verification Sequence",
+    "subtitle": "Sequence Tracing from Telegram Trigger to GitHub REST API Execution and Return",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-pr-ci.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6b.5-github-collaboration"
+    },
+    "description": "Sequence diagram tracing PR review, CI log inspection, and guarded merge execution from Telegram ChatOps through Control Plane, Permission Engine, Local Runtime, and GitHub REST API."
+  },
+  "participants": [
+    {
+      "id": "operator",
+      "label": "Telegram User",
+      "kind": "actor",
+      "description": "Mobile engineer managing GitHub PR and reviewing CI pipelines."
+    },
+    {
+      "id": "telegram_bot",
+      "label": "TelegramBotApp\n(sutra/apps/telegram)",
+      "kind": "service",
+      "description": "Processes ChatOps callbacks, validates session, formats compact UI cards."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine\n(sutra/permissions.py)",
+      "tier": "security",
+      "kind": "service",
+      "description": "Evaluates operation risk; ensures PR merge requires explicit single-use human authorization."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane\n(sutra/control_plane)",
+      "kind": "service",
+      "description": "Validates command schemas and relays commands over TLS WebSocket."
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime\n(sutra/runtime)",
+      "kind": "service",
+      "description": "Dispatches git.* commands to GitHub Adapter within workspace sandbox."
+    },
+    {
+      "id": "github_adapter",
+      "label": "GitHub REST Adapter\n(sutra/git/github.py)",
+      "kind": "service",
+      "description": "Executes HTTP requests, redacts secrets from logs, parses JSON models."
+    },
+    {
+      "id": "github_api",
+      "label": "GitHub API\n(api.github.com)",
+      "kind": "integration",
+      "description": "GitHub REST endpoints for PRs, reviews, comments, merge, and actions runs."
+    }
+  ],
+  "messages": [
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Tap [⚙️ Checks] or send /ci",
+      "action": "call"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "control_plane",
+      "label": "dispatch_command('git.ci_runs', {project_root})",
+      "action": "call"
+    },
+    {
+      "from": "control_plane",
+      "to": "local_runtime",
+      "label": "WSS frame: git.ci_runs",
+      "action": "call"
+    },
+    {
+      "from": "local_runtime",
+      "to": "github_adapter",
+      "label": "list_workflow_runs(owner, repo)",
+      "action": "call"
+    },
+    {
+      "from": "github_adapter",
+      "to": "github_api",
+      "label": "GET /repos/{owner}/{repo}/actions/runs",
+      "action": "call"
+    },
+    {
+      "from": "github_api",
+      "to": "github_adapter",
+      "label": "200 OK (workflow runs list)",
+      "action": "return"
+    },
+    {
+      "from": "github_adapter",
+      "to": "local_runtime",
+      "label": "list[GitHubWorkflowRun]",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "control_plane",
+      "label": "Result payload: runs",
+      "action": "return"
+    },
+    {
+      "from": "control_plane",
+      "to": "telegram_bot",
+      "label": "Command response: runs",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "Display CI Runs screen (statuses & badges)",
+      "action": "return"
+    },
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Tap [🔀 Merge PR #42]",
+      "action": "call"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "permission_engine",
+      "label": "check_permission(action_type='git_pr_merge', target='PR #42')",
+      "action": "call"
+    },
+    {
+      "from": "permission_engine",
+      "to": "operator",
+      "label": "Prompt: Explicit merge confirmation (ALLOW_ONCE required)",
+      "action": "call"
+    },
+    {
+      "from": "operator",
+      "to": "permission_engine",
+      "label": "Authorize merge (mode='squash')",
+      "action": "return"
+    },
+    {
+      "from": "permission_engine",
+      "to": "telegram_bot",
+      "label": "Authorization confirmed",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "control_plane",
+      "label": "dispatch_command('git.pr_merge', {number: 42, method: 'squash'})",
+      "action": "call"
+    },
+    {
+      "from": "control_plane",
+      "to": "local_runtime",
+      "label": "WSS frame: git.pr_merge",
+      "action": "call"
+    },
+    {
+      "from": "local_runtime",
+      "to": "github_adapter",
+      "label": "merge_pull_request(owner, repo, 42, merge_method='squash')",
+      "action": "call"
+    },
+    {
+      "from": "github_adapter",
+      "to": "github_api",
+      "label": "PUT /repos/{owner}/{repo}/pulls/42/merge",
+      "action": "call"
+    },
+    {
+      "from": "github_api",
+      "to": "github_adapter",
+      "label": "200 OK {merged: true, sha: '...fe12'}",
+      "action": "return"
+    },
+    {
+      "from": "github_adapter",
+      "to": "local_runtime",
+      "label": "GitHubMergeResult(merged=True)",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "control_plane",
+      "label": "Result payload: merged",
+      "action": "return"
+    },
+    {
+      "from": "control_plane",
+      "to": "telegram_bot",
+      "label": "Command response: success",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "Display merge success notification (SHA, squash)",
+      "action": "return"
+    }
+  ]
+}

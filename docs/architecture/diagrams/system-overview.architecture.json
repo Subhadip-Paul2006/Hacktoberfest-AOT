@@ -1,0 +1,232 @@
+{
+  "meta": {
+    "title": "AgentBridge — System Architecture",
+    "subtitle": "Remote Agent Runtime & ChatOps Control Plane",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/system-overview.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "apps-modularization-2026-10"
+    },
+    "description": "System architecture of AgentBridge showing CLI experience, modular ChatOps Apps (Telegram operational, Slack/Discord planned), Control Plane, Local Runtime, and Agent Adapters."
+  },
+  "nodes": [
+    {
+      "id": "sutra_cli",
+      "label": "AgentBridge CLI\n(Rich UI / Animated)",
+      "kind": "service",
+      "subsystem": "User Interface",
+      "description": "Animated developer-tool CLI with startup lifecycle validation, diagnostic panels, and command dispatch.",
+      "source": { "file": "sutra/cli.py", "symbol": "main" }
+    },
+    {
+      "id": "telegram_user",
+      "label": "Operator\n(Telegram)",
+      "kind": "actor",
+      "description": "Authorized Telegram user identified by allowlisted user_id. Sends commands and approves permission requests via inline keyboard callbacks.",
+      "source": { "file": "sutra/apps/telegram/bot.py", "symbol": "TelegramBot.allowed_user_ids" }
+    },
+    {
+      "id": "app_telegram",
+      "label": "Telegram App\n(Operational)",
+      "kind": "service",
+      "subsystem": "Bot Applications",
+      "description": "Modular ChatOps integration for Telegram: handles update deduplication, command routing, inline menus, chunking, and secret redaction.",
+      "source": { "file": "sutra/apps/telegram/bot.py", "symbol": "TelegramBot" }
+    },
+    {
+      "id": "app_slack",
+      "label": "Slack App\n(Planned)",
+      "kind": "service",
+      "subsystem": "Bot Applications",
+      "description": "Planned ChatOps integration scaffold for Slack workspace communication.",
+      "source": { "file": "sutra/apps/slack/bot.py", "symbol": "SlackBot" }
+    },
+    {
+      "id": "app_discord",
+      "label": "Discord App\n(Planned)",
+      "kind": "service",
+      "subsystem": "Bot Applications",
+      "description": "Planned ChatOps integration scaffold for Discord guild communication.",
+      "source": { "file": "sutra/apps/discord/bot.py", "symbol": "DiscordBot" }
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane\n(FastAPI / TLS)",
+      "kind": "service",
+      "subsystem": "Remote Control Plane",
+      "description": "Authenticates devices, manages pairing codes, routes commands to connected runtimes over WSS, maintains event log, owns PolicyEngine and rate limiter.",
+      "source": { "file": "sutra/control_plane.py", "symbol": "ControlPlane" }
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine",
+      "kind": "service",
+      "subsystem": "Permission Layer",
+      "description": "Layered permission evaluator: CRITICAL safety → session grants → persistent project/global policies → defaults. Wraps PermissionEngine with SQLite-backed PolicyStore.",
+      "source": { "file": "sutra/policy_engine.py", "symbol": "PolicyEngine" }
+    },
+    {
+      "id": "policy_store",
+      "label": "PolicyStore\n(SQLite)",
+      "kind": "store",
+      "subsystem": "Permission Layer",
+      "description": "Versioned SQLite tables: permission_policies and policy_audit_log. Schema migrated automatically on open. Shares the same database file as ControlPlaneStore.",
+      "source": { "file": "sutra/policy_store.py", "symbol": "PolicyStore" }
+    },
+    {
+      "id": "wss",
+      "label": "WSS\nWebSocket",
+      "kind": "protocol",
+      "subsystem": "Communication",
+      "description": "Mutual-auth WebSocket channel. Device authenticates with token+session_id+generation. Frame replay protection via timestamp window (60s). Heartbeat timeout 60s.",
+      "source": { "file": "sutra/control_plane.py", "lines": "53-56" }
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime\n(FastAPI)",
+      "kind": "service",
+      "subsystem": "Local Runtime",
+      "description": "Handles runtime.* and file.* commands from control plane. Validates workspace roots, streams file windows, paginates directories, routes agent commands to AgentManager.",
+      "source": { "file": "sutra/runtime.py", "symbol": "LocalRuntime" }
+    },
+    {
+      "id": "agent_manager",
+      "label": "AgentManager",
+      "kind": "service",
+      "subsystem": "Local Runtime",
+      "description": "Manages agent session lifecycle (IDLE→STARTING→RUNNING→STOPPED). Debounces output streams, tracks session generations to drop stale events, acquires workspace locks.",
+      "source": { "file": "sutra/agents/manager.py", "symbol": "AgentManager" }
+    },
+    {
+      "id": "workspace_lock",
+      "label": "WorkspaceLock\nManager",
+      "kind": "service",
+      "subsystem": "Local Runtime",
+      "description": "Shared READ / exclusive WRITE lock manager. Detects directory hierarchy overlaps. Session-scoped automatic release on stop.",
+      "source": { "file": "sutra/workspace_lock.py", "symbol": "WorkspaceLockManager" }
+    },
+    {
+      "id": "supervisor",
+      "label": "AgentSupervisor",
+      "kind": "service",
+      "subsystem": "Local Runtime",
+      "description": "Monitors agent health snapshots. Invokes loop detector on output/tool events. Publishes AGENT_BLOCKED event when suspected loop detected.",
+      "source": { "file": "sutra/agents/supervisor.py", "symbol": "AgentSupervisor" }
+    },
+    {
+      "id": "loop_detector",
+      "label": "LoopDetector",
+      "kind": "service",
+      "subsystem": "Observability",
+      "description": "Deterministic loop detection: repeated commands, repeated errors, 2-step and 3-step oscillations. Emits LoopEvidence with loop_type and sample.",
+      "source": { "file": "sutra/loop_detector.py", "symbol": "AgentLoopDetector" }
+    },
+    {
+      "id": "adapters",
+      "label": "Agent Adapters\n(Generic CLI / Cursor / Codex\nJules / Antigravity)",
+      "kind": "service",
+      "subsystem": "Agent Adapters",
+      "description": "Adapter per AI agent type. Launches subprocess, streams stdout/stderr as AGENT_OUTPUT events, handles tool call events, cleans up process tree on stop.",
+      "source": { "file": "sutra/agents/generic_cli.py", "symbol": "GenericCLIAdapter" }
+    },
+    {
+      "id": "agent_process",
+      "label": "Agent Process\n(subprocess)",
+      "kind": "external",
+      "subsystem": "Agent Adapters",
+      "description": "The actual AI coding agent process (e.g., antigravity, cursor, codex). Launched by adapter with sanitized environment.",
+      "source": { "file": "sutra/agents/generic_cli.py", "lines": "1-50" }
+    },
+    {
+      "id": "resilience",
+      "label": "Resilience\n(Circuit Breaker\nRetry / Rate Limit)",
+      "kind": "service",
+      "subsystem": "Observability",
+      "description": "Circuit breaker (CLOSED/OPEN/HALF_OPEN), exponential retry with jitter, sliding window rate limiter, idempotency store, task executor with deduplication.",
+      "source": { "file": "sutra/resilience.py" }
+    },
+    {
+      "id": "metrics",
+      "label": "Metrics\n& Health",
+      "kind": "service",
+      "subsystem": "Observability",
+      "description": "In-process MetricsRegistry with event counters, latency histograms, and health check endpoints (/health/live, /health/ready).",
+      "source": { "file": "sutra/metrics.py", "symbol": "MetricsRegistry" }
+    },
+    {
+      "id": "sqlite_store",
+      "label": "SQLite DB\n(devices + sessions\n+ policies + audit)",
+      "kind": "store",
+      "subsystem": "Persistence",
+      "description": "Single WAL-mode SQLite file: devices, bot_state, telegram_updates, permission_policies, policy_audit_log, schema_meta. All tables share one connection.",
+      "source": { "file": "sutra/control_plane.py", "symbol": "ControlPlaneStore", "lines": "81-117" }
+    },
+    {
+      "id": "file_system",
+      "label": "File System\n& Git",
+      "kind": "store",
+      "subsystem": "Local Runtime",
+      "description": "Workspace files accessed via bounded preview, paginated directory listing, binary detection. Task verifier uses Git diff + file snapshots.",
+      "source": { "file": "sutra/file_access.py" }
+    },
+    {
+      "id": "redaction",
+      "label": "Redaction\n& Security",
+      "kind": "service",
+      "subsystem": "Permission Layer",
+      "description": "Centralized regex redactor for API keys (sk-, ghp_, AKIA), PEM headers, Authorization tokens, sensitive file paths. Applied to all outgoing Telegram messages.",
+      "source": { "file": "sutra/redaction.py", "symbol": "redact_secrets" }
+    }
+  ],
+  "relationships": [
+    { "from": "sutra_cli", "to": "local_runtime", "label": "launch / manage", "kind": "sync" },
+    { "from": "telegram_user", "to": "app_telegram", "label": "HTTPS / webhook", "kind": "sync" },
+    { "from": "app_telegram", "to": "control_plane", "label": "command dispatch\n& event read", "kind": "sync" },
+    { "from": "control_plane", "to": "policy_engine", "label": "check_permission\napply_decision", "kind": "sync" },
+    { "from": "policy_engine", "to": "policy_store", "label": "resolve / mutate", "kind": "sync" },
+    { "from": "policy_store", "to": "sqlite_store", "label": "shared connection\n(same WAL file)", "kind": "sync" },
+    { "from": "control_plane", "to": "wss", "label": "forward command", "kind": "async" },
+    { "from": "wss", "to": "local_runtime", "label": "authenticated WSS", "kind": "sync" },
+    { "from": "local_runtime", "to": "agent_manager", "label": "agent.start/stop/prompt", "kind": "sync" },
+    { "from": "agent_manager", "to": "workspace_lock", "label": "acquire / release", "kind": "sync" },
+    { "from": "agent_manager", "to": "adapters", "label": "start session", "kind": "sync" },
+    { "from": "adapters", "to": "agent_process", "label": "subprocess launch\n& stdin/stdout", "kind": "sync" },
+    { "from": "adapters", "to": "agent_manager", "label": "AGENT_OUTPUT events", "kind": "async" },
+    { "from": "agent_manager", "to": "supervisor", "label": "publish events", "kind": "async" },
+    { "from": "supervisor", "to": "loop_detector", "label": "record_command\nrecord_error", "kind": "sync" },
+    { "from": "local_runtime", "to": "file_system", "label": "bounded preview\npaginated listing", "kind": "sync" },
+    { "from": "app_telegram", "to": "redaction", "label": "redact outgoing\nmessages", "kind": "sync" },
+    { "from": "control_plane", "to": "resilience", "label": "circuit breaker\nretry / rate limit", "kind": "sync" },
+    { "from": "control_plane", "to": "metrics", "label": "emit counters\n& latency", "kind": "async" },
+    { "from": "control_plane", "to": "sqlite_store", "label": "device / session\npersistence", "kind": "sync" }
+  ],
+  "boundaries": [
+    {
+      "id": "apps_boundary",
+      "label": "Bot Applications Layer",
+      "contains": ["app_telegram", "app_slack", "app_discord"]
+    },
+    {
+      "id": "cloud_boundary",
+      "label": "Control Plane Boundary",
+      "contains": ["telegram_user", "app_telegram", "control_plane", "wss", "policy_engine", "policy_store", "sqlite_store", "redaction", "resilience", "metrics"]
+    },
+    {
+      "id": "local_boundary",
+      "label": "Developer Machine (Local)",
+      "contains": ["sutra_cli", "local_runtime", "agent_manager", "workspace_lock", "supervisor", "loop_detector", "adapters", "agent_process", "file_system"]
+    },
+    {
+      "id": "permission_boundary",
+      "label": "Permission Layer",
+      "contains": ["policy_engine", "policy_store", "redaction"]
+    },
+    {
+      "id": "observability_boundary",
+      "label": "Observability",
+      "contains": ["resilience", "metrics", "loop_detector", "supervisor"]
+    }
+  ]
+}

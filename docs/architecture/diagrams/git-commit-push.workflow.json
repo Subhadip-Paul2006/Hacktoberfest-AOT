@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "title": "AgentBridge — Git Commit & Push Workflow",
+    "subtitle": "Safe Staging, Review, Commit, and Permission-Gated Push Flow",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/git-commit-push.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6-git"
+    },
+    "description": "Step-by-step workflow for mobile operators navigating from review of working-tree status through interactive staging, diff inspection, commit creation, and permission-authorized remote push."
+  },
+  "states": [
+    {
+      "id": "review_status",
+      "label": "Review Git Status",
+      "kind": "start",
+      "description": "Operator inspects working tree changes via structured porcelain v1 report on Telegram."
+    },
+    {
+      "id": "select_files",
+      "label": "Select Files to Stage",
+      "kind": "step",
+      "description": "Interactive mobile staging toggling individual modified or untracked candidate files."
+    },
+    {
+      "id": "review_diff",
+      "label": "Review Bounded Diff",
+      "kind": "step",
+      "description": "Operator inspects secret-redacted, line-bounded staged diff before confirming mutations."
+    },
+    {
+      "id": "permission_stage",
+      "label": "Staging Permission Check",
+      "kind": "decision",
+      "description": "PermissionEngine validates MEDIUM risk level and verifies no active workspace write lock conflict."
+    },
+    {
+      "id": "stage_files",
+      "label": "Stage Selected Files",
+      "kind": "step",
+      "description": "Local Git executes git add -- [files] with path traversal containment validation."
+    },
+    {
+      "id": "enter_commit_message",
+      "label": "Enter Commit Message",
+      "kind": "step",
+      "description": "Operator provides commit message via /commit text command or quick commit button."
+    },
+    {
+      "id": "permission_commit",
+      "label": "Commit Permission Check",
+      "kind": "decision",
+      "description": "PermissionEngine assesses HIGH risk level; verifies non-empty staged changes before execution."
+    },
+    {
+      "id": "execute_commit",
+      "label": "Execute Commit",
+      "kind": "step",
+      "description": "Local Git creates commit and records resulting SHA hash."
+    },
+    {
+      "id": "push_preview",
+      "label": "Push Preview & Verification",
+      "kind": "step",
+      "description": "Calculates commits ahead, remote branch, and checks for merge conflicts or detached HEAD."
+    },
+    {
+      "id": "permission_push",
+      "label": "Push Permission Authorization",
+      "kind": "decision",
+      "description": "Explicit human authorization required for HIGH risk remote repository update. Force-push strictly rejected."
+    },
+    {
+      "id": "execute_push",
+      "label": "Push to Remote Repository",
+      "kind": "end",
+      "description": "Git pushes commits to upstream remote (e.g. GitHub) safely."
+    }
+  ],
+  "transitions": [
+    { "from": "review_status", "to": "select_files", "label": "Tap [☑️ Stage]" },
+    { "from": "select_files", "to": "permission_stage", "label": "Stage Selection" },
+    { "from": "permission_stage", "to": "stage_files", "label": "Approved" },
+    { "from": "stage_files", "to": "review_diff", "label": "Review Staged Diff" },
+    { "from": "review_diff", "to": "enter_commit_message", "label": "Proceed to Commit" },
+    { "from": "enter_commit_message", "to": "permission_commit", "label": "Submit Commit" },
+    { "from": "permission_commit", "to": "execute_commit", "label": "Authorized" },
+    { "from": "execute_commit", "to": "push_preview", "label": "Prepare Push" },
+    { "from": "push_preview", "to": "permission_push", "label": "Confirm Push Request" },
+    { "from": "permission_push", "to": "execute_push", "label": "Authorized" }
+  ]
+}

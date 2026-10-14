@@ -1,0 +1,132 @@
+{
+  "meta": {
+    "title": "AgentBridge — File Preview Sequence",
+    "subtitle": "End-to-End Sequence from Telegram Callback to Sandboxed Bounded Preview",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/file-preview.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-5-explorer"
+    },
+    "description": "Sequence diagram tracing a file preview request through Telegram ChatOps, Control Plane, Local Runtime, File Access Layer, Sandbox Validation, Redaction, and bounded response transmission."
+  },
+  "participants": [
+    {
+      "id": "operator",
+      "label": "Telegram User",
+      "kind": "actor",
+      "description": "Mobile developer navigating codebase and requesting file preview."
+    },
+    {
+      "id": "telegram_bot",
+      "label": "TelegramBotApp\n(sutra/apps/telegram)",
+      "kind": "service",
+      "description": "Validates callback query, decodes target context, and dispatches command."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane",
+      "kind": "service",
+      "description": "Authenticates operator session and routes command over WSS to connected device."
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime\n(sutra/runtime)",
+      "kind": "service",
+      "description": "Executes command, binds workspace scope, and coordinates file access."
+    },
+    {
+      "id": "sandbox_guard",
+      "label": "Sandbox Security\n(sutra/security)",
+      "kind": "service",
+      "description": "Enforces workspace boundaries, denies symlink escapes, blocks sensitive files."
+    },
+    {
+      "id": "file_access",
+      "label": "FileAccessLayer\n(sutra/file_access)",
+      "kind": "service",
+      "description": "Streams bounded slice (e.g. lines 1-35), detects binary, counts lines, extracts symbols."
+    },
+    {
+      "id": "redaction_engine",
+      "label": "RedactionEngine\n(sutra/redaction)",
+      "kind": "service",
+      "description": "Redacts API keys, credentials, and tokens line-by-line before returning content."
+    }
+  ],
+  "messages": [
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Click [👁 Preview] / [Next] / [Jump]",
+      "action": "call"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "control_plane",
+      "label": "dispatch_command('file.preview', payload)",
+      "action": "call"
+    },
+    {
+      "from": "control_plane",
+      "to": "local_runtime",
+      "label": "WSS frame: 'file.preview' {project_root, path, start_line, max_lines: 35}",
+      "action": "call"
+    },
+    {
+      "from": "local_runtime",
+      "to": "sandbox_guard",
+      "label": "require_allowed(target, authorized_roots)",
+      "action": "call"
+    },
+    {
+      "from": "sandbox_guard",
+      "to": "local_runtime",
+      "label": "Target validated within sandbox",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "file_access",
+      "label": "preview_file_bounded(target, start_line, max_lines)",
+      "action": "call"
+    },
+    {
+      "from": "file_access",
+      "to": "redaction_engine",
+      "label": "redact_secrets(line)",
+      "action": "call"
+    },
+    {
+      "from": "redaction_engine",
+      "to": "file_access",
+      "label": "Sanitized line content",
+      "action": "return"
+    },
+    {
+      "from": "file_access",
+      "to": "local_runtime",
+      "label": "Bounded preview dict {total_lines, start_line, end_line, content, version}",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "control_plane",
+      "label": "WSS response frame {status: 'success', payload: preview}",
+      "action": "return"
+    },
+    {
+      "from": "control_plane",
+      "to": "telegram_bot",
+      "label": "Result payload delivered to dispatcher",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "Render formatted Markdown code block with navigation buttons",
+      "action": "return"
+    }
+  ]
+}

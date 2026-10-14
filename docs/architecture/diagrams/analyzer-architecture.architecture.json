@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "title": "AgentBridge — Generic Environment & Connector Analyzer Architecture",
+    "subtitle": "Provider-Neutral Pipeline, Probing Engine, Evidence Model & Observability",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/analyzer-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-4-connector-analyzer"
+    },
+    "description": "System architecture of the Phase 7.4 Generic Environment and Connector Analyzer in AgentBridge. Demonstrates provider-neutral descriptor consumption, multi-stage inspection pipeline, non-destructive OS/binary/client probing, ActivityStore evidence auditing, and in-process metrics recording without vendor conditionals."
+  },
+  "components": [
+    {
+      "id": "connector_registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "tier": "core",
+      "description": "Central in-process connector authority providing lifecycle management, registration hooks, and standardized ConnectorAnalysisDescriptor extraction."
+    },
+    {
+      "id": "connector_analyzer",
+      "label": "ConnectorAnalyzer\n(sutra/connectors/analyzer/pipeline.py)",
+      "tier": "service",
+      "description": "Single unified verification engine orchestrating 12 inspection stages with bounded concurrency semaphore and per-connector fault isolation."
+    },
+    {
+      "id": "environment_probe",
+      "label": "EnvironmentProbe\n(sutra/connectors/analyzer/probes.py)",
+      "tier": "probe",
+      "description": "Safe platform discovery probing OS family, CPU architecture, Python runtime, working directory, and writable temp directories without dumping raw environment variables."
+    },
+    {
+      "id": "cli_probe",
+      "label": "CLIProbe\n(sutra/connectors/analyzer/probes.py)",
+      "tier": "probe",
+      "description": "Non-destructive binary discovery using which/where.exe and sanitized --version checks with strict 3-second timeouts."
+    },
+    {
+      "id": "client_probe",
+      "label": "ClientProbe\n(sutra/connectors/analyzer/probes.py)",
+      "tier": "probe",
+      "description": "Workstation tool detector verifying presence, config paths, and versions of Cursor, VS Code, AgentBridge Runtime, and generic CLI agents."
+    },
+    {
+      "id": "analysis_models",
+      "label": "Analysis Models & Evidence\n(sutra/connectors/analyzer/models.py)",
+      "tier": "data",
+      "description": "Strict verification state machine (7 distinct states), 12 check categories, CheckStatus (PASS/FAIL/UNKNOWN/SKIPPED), and immutable AnalysisReport."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "Local SQLite audit trail recording verification events, latency diagnostics, check counts, and historical tool-call usage evidence."
+    },
+    {
+      "id": "metrics_registry",
+      "label": "Metrics\n(sutra/metrics.py)",
+      "tier": "observability",
+      "description": "In-process bounded metrics tracking analyzer_run_total, analyzer_run_success, and analyzer_run_error without cardinality explosion."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine\n(sutra/permissions.py)",
+      "tier": "security",
+      "description": "Authoritative policy evaluator ensuring connector analysis operates within defined security boundaries and credential inspection remains redacted."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "connector_registry",
+      "to": "connector_analyzer",
+      "label": "supplies ConnectorAnalysisDescriptor"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "environment_probe",
+      "label": "executes OS/platform probe"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "cli_probe",
+      "label": "executes safe binary resolution"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "client_probe",
+      "label": "inspects tool client configs"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "analysis_models",
+      "label": "aggregates checks into AnalysisReport"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "activity_store",
+      "label": "reads usage evidence & logs analysis"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "metrics_registry",
+      "label": "increments analyzer counters"
+    },
+    {
+      "from": "connector_analyzer",
+      "to": "permission_engine",
+      "label": "abides by secret redaction policies"
+    }
+  ]
+}

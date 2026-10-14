@@ -1,0 +1,73 @@
+{
+  "meta": {
+    "title": "AgentBridge — Codebase Explorer Architecture",
+    "subtitle": "Component Architecture for Sandboxed Explorer & Preview",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/codebase-explorer.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-5-explorer"
+    },
+    "description": "Architectural model reflecting actual implementation components across Telegram ChatOps layer, Control Plane gateway, Local Runtime, File Access subsystem, and Sandbox security perimeter."
+  },
+  "components": [
+    {
+      "id": "telegram_ui",
+      "label": "Telegram ChatOps UI\n(sutra/apps/telegram/formatting.py)",
+      "tier": "presentation",
+      "description": "Renders project listing, directory explorer, file metadata cards, bounded previews, jump menus, search results, and symbol discovery."
+    },
+    {
+      "id": "telegram_callbacks",
+      "label": "Callback & State Manager\n(sutra/apps/telegram/callbacks.py)",
+      "tier": "presentation",
+      "description": "Idempotent target button routing, session validation, stale button rejection, active file context tracking."
+    },
+    {
+      "id": "control_plane_gateway",
+      "label": "ControlPlane Gateway\n(sutra/control_plane.py)",
+      "tier": "gateway",
+      "description": "Routes authorized command frames over WSS, manages device sessions, enforces schema bounds on payloads."
+    },
+    {
+      "id": "runtime_dispatch",
+      "label": "LocalRuntime Dispatcher\n(sutra/runtime.py)",
+      "tier": "runtime",
+      "description": "Validates workspace boundaries, resolves project paths, executes file.list, file.preview, file.info, file.search, file.symbols."
+    },
+    {
+      "id": "file_access_engine",
+      "label": "File Access Engine\n(sutra/file_access.py)",
+      "tier": "core",
+      "description": "Bounded streaming line pagination, deterministic line counting, mtime versioning, binary detection, text search."
+    },
+    {
+      "id": "ast_symbol_parser",
+      "label": "Deterministic Symbol Parser\n(sutra/file_access.py:extract_file_symbols)",
+      "tier": "core",
+      "description": "Python AST tree inspection for classes, async/sync functions, methods, with regex fallback for polyglot languages."
+    },
+    {
+      "id": "sandbox_perimeter",
+      "label": "Workspace Sandbox Perimeter\n(sutra/security.py)",
+      "tier": "security",
+      "description": "Canonical realpath validation, symlink traversal prevention, sensitive file exclusion (.env, credentials, keys)."
+    },
+    {
+      "id": "redaction_filter",
+      "label": "Secret Redaction Filter\n(sutra/redaction.py)",
+      "tier": "security",
+      "description": "High-speed regex sanitization replacing API keys, tokens, and private headers with [REDACTED]."
+    }
+  ],
+  "relations": [
+    { "from": "telegram_ui", "to": "telegram_callbacks", "label": "Inline button clicks" },
+    { "from": "telegram_callbacks", "to": "control_plane_gateway", "label": "dispatch_command()" },
+    { "from": "control_plane_gateway", "to": "runtime_dispatch", "label": "TLS WebSocket Frame" },
+    { "from": "runtime_dispatch", "to": "sandbox_perimeter", "label": "require_allowed()" },
+    { "from": "runtime_dispatch", "to": "file_access_engine", "label": "Invoke bounded file ops" },
+    { "from": "file_access_engine", "to": "ast_symbol_parser", "label": "Parse symbols" },
+    { "from": "file_access_engine", "to": "redaction_filter", "label": "Filter secret tokens" }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "title": "AgentBridge — Degraded Mode & Fault Isolation Workflow",
+    "subtitle": "GitHub Outage Isolation: Local Git and System Services Remain 100% Operational",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/degraded-mode.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6c-reliability-hardening"
+    },
+    "description": "Workflow proving that when GitHub REST is completely down (circuit breaker OPEN), AgentBridge gracefully degrades remote actions while keeping Local Git, Telegram ChatOps, Codebase Explorer, and Agent Runtime fully active."
+  },
+  "states": [
+    {
+      "id": "github_outage",
+      "label": "GitHub Upstream Outage Occurs",
+      "kind": "start",
+      "description": "GitHub REST endpoints return repeated HTTP 500/502/503/504 or experience complete network blackouts."
+    },
+    {
+      "id": "breaker_trips",
+      "label": "Circuit Breaker Trips to OPEN",
+      "kind": "step",
+      "description": "After 5 consecutive failures, github_rest breaker opens and triggers 30-second cooldown timer."
+    },
+    {
+      "id": "request_arrives",
+      "label": "User Requests Arrive via Telegram",
+      "kind": "decision",
+      "description": "Operator dispatches either local workstation commands or remote GitHub collaboration commands."
+    },
+    {
+      "id": "github_route",
+      "label": "GitHub Request (PR / CI / Release)",
+      "kind": "step",
+      "description": "Request reaches resilience boundary while circuit breaker is OPEN."
+    },
+    {
+      "id": "check_stale_cache",
+      "label": "Check Stale Read Cache",
+      "kind": "decision",
+      "description": "Evaluate if safe read data (e.g. PR details, release notes) exists in CacheStore."
+    },
+    {
+      "id": "serve_stale_data",
+      "label": "Serve Degraded Cached Data",
+      "kind": "step",
+      "description": "Return cached information accompanied by '(Degraded: upstream unavailable)' indicator."
+    },
+    {
+      "id": "fast_fail_github",
+      "label": "Fast-Fail GitHub Operation",
+      "kind": "step",
+      "description": "Return clean normalized CIRCUIT_OPEN error immediately without network delay or hung socket."
+    },
+    {
+      "id": "local_git_route",
+      "label": "Local Git Request (/git status, diff, commit)",
+      "kind": "step",
+      "description": "Local Git commands execute directly on workstation .git repository."
+    },
+    {
+      "id": "explorer_route",
+      "label": "Codebase Explorer / Search / Files",
+      "kind": "step",
+      "description": "File system navigation, previews, symbol discovery, and exports."
+    },
+    {
+      "id": "agent_route",
+      "label": "Agent Runtime & ChatOps Heartbeats",
+      "kind": "step",
+      "description": "Control plane sessions, doctor diagnostics, and pairing continue without interruption."
+    },
+    {
+      "id": "local_success",
+      "label": "Local Operations Succeed (100% Availability)",
+      "kind": "end",
+      "description": "Local workstation remains fully productive despite remote cloud outage."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "github_outage",
+      "to": "breaker_trips"
+    },
+    {
+      "from": "breaker_trips",
+      "to": "request_arrives"
+    },
+    {
+      "from": "request_arrives",
+      "to": "github_route",
+      "label": "Remote Command"
+    },
+    {
+      "from": "request_arrives",
+      "to": "local_git_route",
+      "label": "Local Git Command"
+    },
+    {
+      "from": "request_arrives",
+      "to": "explorer_route",
+      "label": "File Explorer Command"
+    },
+    {
+      "from": "request_arrives",
+      "to": "agent_route",
+      "label": "Agent Session Command"
+    },
+    {
+      "from": "github_route",
+      "to": "check_stale_cache"
+    },
+    {
+      "from": "check_stale_cache",
+      "to": "serve_stale_data",
+      "label": "Cache Present & Safe Read"
+    },
+    {
+      "from": "check_stale_cache",
+      "to": "fast_fail_github",
+      "label": "Cache Miss / Mutation"
+    },
+    {
+      "from": "local_git_route",
+      "to": "local_success"
+    },
+    {
+      "from": "explorer_route",
+      "to": "local_success"
+    },
+    {
+      "from": "agent_route",
+      "to": "local_success"
+    }
+  ]
+}

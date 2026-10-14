@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "title": "AgentBridge — Remote Command Execution Flow",
+    "subtitle": "End-to-End Sequence from Telegram to Local Runtime",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/command-execution.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "hardening-pass-2026-10"
+    },
+    "description": "Sequence diagram tracing a prompt or command from Telegram user callback through ControlPlane authentication, PolicyEngine evaluation, WSS delivery, LocalRuntime execution, and redacted response return."
+  },
+  "participants": [
+    {
+      "id": "operator",
+      "label": "Operator\n(Telegram)",
+      "kind": "actor",
+      "description": "Human developer issuing commands or approvals via Telegram ChatOps interface."
+    },
+    {
+      "id": "telegram_bot",
+      "label": "TelegramBot",
+      "kind": "service",
+      "description": "Polls updates, enforces allowlist, parses slash commands, and formats responses."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane",
+      "kind": "service",
+      "description": "Dispatches commands, checks circuit breaker, maintains pending response futures."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine",
+      "kind": "service",
+      "description": "Evaluates CRITICAL invariants, active session grants, and SQLite persistent policies."
+    },
+    {
+      "id": "wss_channel",
+      "label": "WSS Channel",
+      "kind": "protocol",
+      "description": "TLS-encrypted WebSocket connection with frame replay protection and session generations."
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime",
+      "kind": "service",
+      "description": "Verifies workspace paths, acquires locks, routes command to AgentManager or file system."
+    },
+    {
+      "id": "agent_adapter",
+      "label": "Agent Adapter\n& Process",
+      "kind": "service",
+      "description": "Sends prompt to CLI/Cursor/Codex subprocess and streams output back."
+    }
+  ],
+  "messages": [
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Send command / prompt",
+      "kind": "sync",
+      "note": "Operator clicks inline button or types /prompt"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "control_plane",
+      "label": "dispatch_command(device_id, action, payload)",
+      "kind": "sync",
+      "note": "Routes to target paired device"
+    },
+    {
+      "from": "control_plane",
+      "to": "policy_engine",
+      "label": "check_permission(request, workspace_path)",
+      "kind": "sync",
+      "note": "Layered evaluation: CRITICAL → Session → Project → Global"
+    },
+    {
+      "from": "policy_engine",
+      "to": "control_plane",
+      "label": "PermissionResult(allowed=True/False, reason)",
+      "kind": "return",
+      "note": "If False & non-critical, prompts operator via Telegram callback"
+    },
+    {
+      "from": "control_plane",
+      "to": "wss_channel",
+      "label": "send_frame(type='command', request_id, generation)",
+      "kind": "async",
+      "note": "Timestamped WSS frame sent to connected runtime"
+    },
+    {
+      "from": "wss_channel",
+      "to": "local_runtime",
+      "label": "Receive and validate frame",
+      "kind": "sync",
+      "note": "Validates session_id, generation, and timestamp window"
+    },
+    {
+      "from": "local_runtime",
+      "to": "agent_adapter",
+      "label": "agent.prompt / execute_tool",
+      "kind": "sync",
+      "note": "Dispatches to active agent session under workspace lock"
+    },
+    {
+      "from": "agent_adapter",
+      "to": "local_runtime",
+      "label": "Yield stdout chunks & completion",
+      "kind": "return",
+      "note": "Debounced chunk stream"
+    },
+    {
+      "from": "local_runtime",
+      "to": "wss_channel",
+      "label": "send_frame(type='response', request_id, status='success')",
+      "kind": "async",
+      "note": "Response frame returned over WebSocket"
+    },
+    {
+      "from": "wss_channel",
+      "to": "control_plane",
+      "label": "Deliver response frame",
+      "kind": "sync",
+      "note": "Control plane resolves pending future by request_id"
+    },
+    {
+      "from": "control_plane",
+      "to": "telegram_bot",
+      "label": "CommandResult(status='success', payload)",
+      "kind": "return",
+      "note": "Response payload returned to bot"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "telegram_bot",
+      "label": "redact_secrets(payload)",
+      "kind": "sync",
+      "note": "Sanitizes tokens, keys, and private paths"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "Formatted & chunked Telegram message",
+      "kind": "async",
+      "note": "Operator receives clean, safe output"
+    }
+  ]
+}

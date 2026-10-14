@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Tool Call Execution & Auditing Sequence",
+    "subtitle": "Security Redaction, Resilience Wrapping, Session Dispatch & ActivityStore Correlation",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-tool-call.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-5-mcp-client-core"
+    },
+    "description": "End-to-end sequence of a tool call dispatched through MCPConnector. Traces policy evaluation, parameter sanitization, ActivityStore running audit, session dispatch over transport, result scrubbing, and completion recording."
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "label": "Agent / Caller",
+      "kind": "actor",
+      "description": "Initiator of the tool execution request."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine\n(sutra/permissions)",
+      "kind": "security",
+      "description": "Authoritative governance engine evaluating permissions for tool execution."
+    },
+    {
+      "id": "connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp)",
+      "kind": "adapter",
+      "description": "Canonical AgentBridge Connector handling operation routing and auditing."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "kind": "database",
+      "description": "SQLite store auditing start and end of tool executions with scrubbed data."
+    },
+    {
+      "id": "client",
+      "label": "MCPClient\n(sutra/connectors/mcp)",
+      "kind": "service",
+      "description": "Domain MCP client normalizing arguments, timeouts, and results."
+    },
+    {
+      "id": "session",
+      "label": "MCPSession\n(sutra/connectors/mcp)",
+      "kind": "core",
+      "description": "Protocol manager validating readiness and routing JSON-RPC request."
+    },
+    {
+      "id": "transport",
+      "label": "MCPTransport\n(stdio / HTTP / Fake)",
+      "kind": "integration",
+      "description": "Physical or mock communication channel to the remote MCP server."
+    }
+  ],
+  "steps": [
+    {
+      "from": "caller",
+      "to": "policy_engine",
+      "message": "check_permission(create_permission_request(tool_name))",
+      "kind": "sync"
+    },
+    {
+      "from": "policy_engine",
+      "to": "caller",
+      "message": "ALLOW / ASK / DENY",
+      "kind": "sync"
+    },
+    {
+      "from": "caller",
+      "to": "connector",
+      "message": "execute(ConnectorRequest(operation='tool:query_data', parameters={...}))",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "connector",
+      "message": "sanitize_metadata(parameters) -> clean_args",
+      "kind": "internal"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "record_tool_call(request_id, tool_name, arguments=clean_args, status='running')",
+      "kind": "sync"
+    },
+    {
+      "from": "activity_store",
+      "to": "connector",
+      "message": "tool_call_id returned",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "client",
+      "message": "call_tool(name='query_data', arguments=clean_args, request_id=request_id)",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "session",
+      "message": "request('tools/call', {'name': 'query_data', 'arguments': clean_args})",
+      "kind": "async"
+    },
+    {
+      "from": "session",
+      "to": "transport",
+      "message": "send_request('tools/call', params, timeout)",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "session",
+      "message": "{'content': [{'type': 'text', 'text': 'Result with sk-ant-...'}], 'isError': false}",
+      "kind": "async"
+    },
+    {
+      "from": "session",
+      "to": "client",
+      "message": "raw JSON-RPC result dict",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "client",
+      "message": "MCPToolCallResult(content, is_error=False)",
+      "kind": "internal"
+    },
+    {
+      "from": "client",
+      "to": "connector",
+      "message": "MCPToolCallResult returned",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "connector",
+      "message": "redact_secrets(result_text) -> clean_content",
+      "kind": "internal"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "update_tool_call(tool_call_id, status='success', result=clean_content, duration_ms)",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "caller",
+      "message": "ConnectorResult(success=True, content=clean_content)",
+      "kind": "async"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Stdio Subprocess Lifecycle & Teardown Workflow",
+    "subtitle": "Process Spawning, Stream Synchronization, Crash Detection & Force-Kill Fallback",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-stdio-lifecycle.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-6-mcp-stdio"
+    },
+    "description": "Lifecycle finite state machine and failure recovery workflow governing local MCP stdio processes. Illustrates transitions from DISCONNECTED through STARTING, active CONNECTED stream monitoring, process crash detection, graceful shutdown, and cross-platform termination fallbacks."
+  },
+  "states": [
+    {
+      "id": "state_disconnected",
+      "label": "DISCONNECTED",
+      "kind": "start",
+      "description": "Initial state. No child process exists. Calls to send_request raise ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_spawn",
+      "label": "Spawn Subprocess",
+      "kind": "step",
+      "description": "Executes command with arguments array using asyncio.create_subprocess_exec (shell=False)."
+    },
+    {
+      "id": "decision_spawn",
+      "label": "Process Spawned?",
+      "kind": "decision",
+      "description": "Verifies binary presence, permissions, and initial process launch within startup_timeout."
+    },
+    {
+      "id": "state_error",
+      "label": "ERROR",
+      "kind": "step",
+      "description": "Process failed to spawn (FileNotFoundError, PermissionError) or crashed unexpectedly."
+    },
+    {
+      "id": "action_attach_streams",
+      "label": "Attach Async I/O Tasks",
+      "kind": "step",
+      "description": "Initializes _read_stdout_loop, _read_stderr_loop, and _monitor_process_exit tasks."
+    },
+    {
+      "id": "state_connected",
+      "label": "CONNECTED",
+      "kind": "step",
+      "description": "Transport is open and ready. Protocol reader is consuming stdout; writer is available on stdin."
+    },
+    {
+      "id": "action_monitor",
+      "label": "Process Exit Monitor",
+      "kind": "step",
+      "description": "Awaits proc.wait(). Detects unexpected crashes, captures exit codes, and fails in-flight requests."
+    },
+    {
+      "id": "action_close_request",
+      "label": "Initiate Teardown",
+      "kind": "step",
+      "description": "transport.close() requested. Transitions state to CLOSING and fails pending futures."
+    },
+    {
+      "id": "state_closing",
+      "label": "CLOSING",
+      "kind": "step",
+      "description": "Teardown in progress. Inbound requests rejected; graceful exit procedure engaged."
+    },
+    {
+      "id": "action_close_stdin",
+      "label": "Signal Stdin EOF",
+      "kind": "step",
+      "description": "Closes stdin stream to notify server of orderly shutdown. Waits up to shutdown_timeout."
+    },
+    {
+      "id": "decision_graceful_exit",
+      "label": "Exited Gracefully?",
+      "kind": "decision",
+      "description": "Checks if child process exited cleanly following stdin closure."
+    },
+    {
+      "id": "action_terminate",
+      "label": "Send Terminate Signal",
+      "kind": "step",
+      "description": "Sends SIGTERM (POSIX) or TerminateProcess (Windows). Waits up to kill_timeout."
+    },
+    {
+      "id": "action_force_kill",
+      "label": "Force Kill & Tree Cleanup",
+      "kind": "step",
+      "description": "Sends SIGKILL (POSIX) or taskkill /F /T (Windows) to reclaim hung process and prevent zombies."
+    },
+    {
+      "id": "state_reaped",
+      "label": "TERMINATED / DISCONNECTED",
+      "kind": "end",
+      "description": "Process reaped, tasks cancelled, streams released. Transport returned to DISCONNECTED."
+    }
+  ],
+  "transitions": [
+    {
+      "source": "state_disconnected",
+      "target": "action_spawn",
+      "label": "open() called"
+    },
+    {
+      "source": "action_spawn",
+      "target": "decision_spawn",
+      "label": "subprocess launch result"
+    },
+    {
+      "source": "decision_spawn",
+      "target": "state_error",
+      "label": "missing binary / permission denied / timeout"
+    },
+    {
+      "source": "decision_spawn",
+      "target": "action_attach_streams",
+      "label": "PID assigned"
+    },
+    {
+      "source": "action_attach_streams",
+      "target": "state_connected",
+      "label": "reader loops running"
+    },
+    {
+      "source": "state_connected",
+      "target": "action_monitor",
+      "label": "active process monitoring"
+    },
+    {
+      "source": "action_monitor",
+      "target": "state_error",
+      "label": "unexpected crash (code != 0)"
+    },
+    {
+      "source": "state_connected",
+      "target": "action_close_request",
+      "label": "close() invoked"
+    },
+    {
+      "source": "action_close_request",
+      "target": "state_closing",
+      "label": "state set to CLOSING"
+    },
+    {
+      "source": "state_closing",
+      "target": "action_close_stdin",
+      "label": "begin teardown"
+    },
+    {
+      "source": "action_close_stdin",
+      "target": "decision_graceful_exit",
+      "label": "proc.wait() evaluated"
+    },
+    {
+      "source": "decision_graceful_exit",
+      "target": "state_reaped",
+      "label": "clean exit within shutdown_timeout"
+    },
+    {
+      "source": "decision_graceful_exit",
+      "target": "action_terminate",
+      "label": "process still running"
+    },
+    {
+      "source": "action_terminate",
+      "target": "state_reaped",
+      "label": "exited on terminate signal"
+    },
+    {
+      "source": "action_terminate",
+      "target": "action_force_kill",
+      "label": "kill_timeout expired"
+    },
+    {
+      "source": "action_force_kill",
+      "target": "state_reaped",
+      "label": "process tree killed"
+    }
+  ]
+}

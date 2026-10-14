@@ -1,0 +1,181 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Session & Connector Lifecycle State Machine",
+    "subtitle": "Transport Connection, Handshake Negotiation, Readiness & Degradation",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-client-lifecycle.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-5-mcp-client-core"
+    },
+    "description": "Lifecycle finite-state machine governing MCP client sessions from DISCONNECTED through CONNECTING, version negotiation, capability exchange, READY state, runtime ping DEGRADED status, error recovery, and clean session shutdown."
+  },
+  "states": [
+    {
+      "id": "state_disconnected",
+      "label": "DISCONNECTED",
+      "kind": "start",
+      "description": "Initial dormant state. Transport is closed. Invocations raise ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_connect",
+      "label": "Open Transport",
+      "kind": "step",
+      "description": "Session transitions to CONNECTING. Calls transport.open() asynchronously."
+    },
+    {
+      "id": "state_connecting",
+      "label": "CONNECTING",
+      "kind": "step",
+      "description": "Transport link is live; protocol initialization handshake is initiated."
+    },
+    {
+      "id": "action_handshake",
+      "label": "Protocol Handshake",
+      "kind": "step",
+      "description": "Sends initialize request with client capabilities and latest protocol version (2026-07-28)."
+    },
+    {
+      "id": "decision_handshake",
+      "label": "Handshake Succeeded?",
+      "kind": "decision",
+      "description": "Verifies server response, negotiates supported protocol version, and checks capabilities."
+    },
+    {
+      "id": "action_notify_initialized",
+      "label": "Send notifications/initialized",
+      "kind": "step",
+      "description": "Confirms protocol establishment by transmitting initialized notification."
+    },
+    {
+      "id": "state_ready",
+      "label": "READY",
+      "kind": "step",
+      "description": "Session fully initialized. Tools, resources, and prompts operations are active."
+    },
+    {
+      "id": "action_ping_probe",
+      "label": "Diagnostic Ping",
+      "kind": "step",
+      "description": "connector.health() or client.ping() verifies server liveness and round-trip latency."
+    },
+    {
+      "id": "decision_ping",
+      "label": "Ping Healthy?",
+      "kind": "decision",
+      "description": "Checks if ping responds within threshold without transport error."
+    },
+    {
+      "id": "state_degraded",
+      "label": "DEGRADED",
+      "kind": "step",
+      "description": "Session remains connected but ping timed out or failed. Health check reports DEGRADED."
+    },
+    {
+      "id": "state_error",
+      "label": "ERROR",
+      "kind": "step",
+      "description": "Transport connection dropped, handshake rejected, or unrecoverable protocol fault."
+    },
+    {
+      "id": "action_disconnect",
+      "label": "Close & Teardown",
+      "kind": "step",
+      "description": "Gracefully cancels pending operations and closes the underlying transport."
+    },
+    {
+      "id": "state_closed",
+      "label": "CLOSED / DISCONNECTED",
+      "kind": "end",
+      "description": "Terminal clean state. All resources released."
+    }
+  ],
+  "transitions": [
+    {
+      "source": "state_disconnected",
+      "target": "action_connect",
+      "label": "connect() called"
+    },
+    {
+      "source": "action_connect",
+      "target": "state_connecting",
+      "label": "transport.open() ok"
+    },
+    {
+      "source": "state_connecting",
+      "target": "action_handshake",
+      "label": "send initialize"
+    },
+    {
+      "source": "action_handshake",
+      "target": "decision_handshake",
+      "label": "server reply received"
+    },
+    {
+      "source": "decision_handshake",
+      "target": "action_notify_initialized",
+      "label": "version negotiated"
+    },
+    {
+      "source": "decision_handshake",
+      "target": "state_error",
+      "label": "handshake rejected / error"
+    },
+    {
+      "source": "action_notify_initialized",
+      "target": "state_ready",
+      "label": "initialized notification sent"
+    },
+    {
+      "source": "state_ready",
+      "target": "action_ping_probe",
+      "label": "periodic or explicit health check"
+    },
+    {
+      "source": "action_ping_probe",
+      "target": "decision_ping",
+      "label": "evaluate latency"
+    },
+    {
+      "source": "decision_ping",
+      "target": "state_ready",
+      "label": "ping succeeded (latency_ms < limit)"
+    },
+    {
+      "source": "decision_ping",
+      "target": "state_degraded",
+      "label": "ping timed out / glitch"
+    },
+    {
+      "source": "state_degraded",
+      "target": "action_ping_probe",
+      "label": "retry diagnostic probe"
+    },
+    {
+      "source": "state_ready",
+      "target": "state_error",
+      "label": "transport connection severed"
+    },
+    {
+      "source": "state_ready",
+      "target": "action_disconnect",
+      "label": "disconnect() requested"
+    },
+    {
+      "source": "state_degraded",
+      "target": "action_disconnect",
+      "label": "disconnect() requested"
+    },
+    {
+      "source": "state_error",
+      "target": "action_disconnect",
+      "label": "teardown & cleanup"
+    },
+    {
+      "source": "action_disconnect",
+      "target": "state_closed",
+      "label": "transport.close() finished"
+    }
+  ]
+}

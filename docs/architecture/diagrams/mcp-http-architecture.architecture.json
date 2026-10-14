@@ -1,0 +1,112 @@
+{
+  "meta": {
+    "title": "AgentBridge — Remote MCP HTTP Transport Architecture",
+    "subtitle": "Streamable HTTP, Legacy SSE Fallback, Connection Lifecycle & Security Controls",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-http-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-7-mcp-http"
+    },
+    "description": "System architecture of the Phase 7.7 Remote Model Context Protocol (MCP) HTTP Transport in AgentBridge. Illustrates HTTP/HTTPS transport mechanics, modern Streamable HTTP (POST with direct JSON or streaming text/event-stream responses), legacy SSE fallback (GET /sse + POST /messages), authentication injection, bounded buffering, error normalization, and AgentBridge platform boundaries."
+  },
+  "components": [
+    {
+      "id": "mcp_connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp/connector.py)",
+      "tier": "adapter",
+      "description": "Standard AgentBridge Connector contract implementation routing operations, scrubbing sensitive arguments, and correlating events with ActivityStore."
+    },
+    {
+      "id": "mcp_client",
+      "label": "MCPClient\n(sutra/connectors/mcp/client.py)",
+      "tier": "service",
+      "description": "Domain-level MCP client exposing tools, resources, prompts, and bounded cursor pagination."
+    },
+    {
+      "id": "mcp_session",
+      "label": "MCPSession\n(sutra/connectors/mcp/session.py)",
+      "tier": "core",
+      "description": "Protocol coordinator maintaining session state FSM and multi-version negotiation (2026-07-28, 2025-03-26, 2024-11-05)."
+    },
+    {
+      "id": "http_transport",
+      "label": "HttpMCPTransport\n(sutra/connectors/mcp/http.py)",
+      "tier": "transport",
+      "description": "Concrete transport implementing MCPTransport over Streamable HTTP and legacy SSE with bounded response and event buffering."
+    },
+    {
+      "id": "http_config",
+      "label": "MCPHttpConfig\n(sutra/connectors/mcp/http.py)",
+      "tier": "config",
+      "description": "Strongly typed configuration specifying endpoint URL, authentication hooks, timeout limits, max response bytes, and security policies."
+    },
+    {
+      "id": "auth_boundary",
+      "label": "Authentication Boundary\n(sutra/connectors/mcp/http.py)",
+      "tier": "security",
+      "description": "Memory-only token and header injection interface that redacts credentials from logs, metrics, and diagnostics."
+    },
+    {
+      "id": "remote_server",
+      "label": "Remote MCP Server\n(Streamable HTTP / SSE Endpoint)",
+      "tier": "external",
+      "description": "External MCP server process receiving JSON-RPC 2.0 requests over HTTPS/HTTP and returning JSON or streaming event streams."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "SQLite audit repository capturing correlated tool execution timestamps, request IDs, and scrubbed arguments."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine\n(sutra/policy_engine.py)",
+      "tier": "security",
+      "description": "Centralized authorization engine verifying permission grants prior to executing mutating tool calls."
+    }
+  ],
+  "relationships": [
+    {
+      "source": "mcp_connector",
+      "target": "mcp_client",
+      "label": "delegates operations to"
+    },
+    {
+      "source": "mcp_client",
+      "target": "mcp_session",
+      "label": "dispatches requests via"
+    },
+    {
+      "source": "mcp_session",
+      "target": "http_transport",
+      "label": "exchanges JSON-RPC over"
+    },
+    {
+      "source": "http_transport",
+      "target": "http_config",
+      "label": "configured by"
+    },
+    {
+      "source": "http_transport",
+      "target": "auth_boundary",
+      "label": "injects headers via"
+    },
+    {
+      "source": "http_transport",
+      "target": "remote_server",
+      "label": "sends HTTP POST / streams SSE with"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "activity_store",
+      "label": "records execution audit to"
+    },
+    {
+      "source": "mcp_connector",
+      "target": "policy_engine",
+      "label": "checks authorization against"
+    }
+  ]
+}

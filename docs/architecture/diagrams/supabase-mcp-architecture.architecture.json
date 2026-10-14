@@ -1,0 +1,162 @@
+{
+  "meta": {
+    "title": "AgentBridge — Supabase Remote MCP Connector Architecture",
+    "subtitle": "Streamable HTTP Transport, OAuth PKCE / PAT Credentials & Read-Only Policy Boundary",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/supabase-mcp-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8c-supabase-mcp"
+    },
+    "description": "System architecture of Phase 7.8C Supabase Remote MCP Connector in AgentBridge. Details CLI / agent callers, ConnectorRegistry lifecycle management, SupabaseMCPConnector adapter with project scoping and feature filtering, MCPOAuthClient and SupabaseCredentialProvider with OS Keyring / environment precedence, MCPClient / MCPSession protocol engine, HttpMCPTransport Streamable HTTP dispatch to https://mcp.supabase.com/mcp, PolicyEngine risk boundaries enforcing read-only defaults, and SQLite ActivityStore audit correlation."
+  },
+  "components": [
+    {
+      "id": "sutra_cli",
+      "label": "AgentBridge CLI / Runtime / Telegram\n(sutra/connectors/cli.py)",
+      "tier": "ui",
+      "description": "User-facing CLI commands (add, auth, test, status, tools, remove) and autonomous agent callers."
+    },
+    {
+      "id": "connector_registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "tier": "service",
+      "description": "Central lifecycle coordinator managing connector registration, persistent configuration, and state transitions."
+    },
+    {
+      "id": "credential_provider",
+      "label": "SupabaseCredentialProvider\n(sutra/credentials.py)",
+      "tier": "security",
+      "description": "Resolves tokens across Memory > Instance Env > Primary Env > Fallback Env > Keyring with OAuth token refresh."
+    },
+    {
+      "id": "oauth_client",
+      "label": "MCPOAuthClient\n(sutra/connectors/mcp/oauth.py)",
+      "tier": "security",
+      "description": "Reusable OAuth 2.0 PKCE engine with dynamic loopback server listener (127.0.0.1:<port>) and code exchange."
+    },
+    {
+      "id": "os_keyring",
+      "label": "OS Keyring Backend\n(Windows Credential Manager / Keychain / Secret Service)",
+      "tier": "external",
+      "description": "Operating system credential store safeguarding tokens and refresh tokens without plaintext storage."
+    },
+    {
+      "id": "supabase_connector",
+      "label": "SupabaseMCPConnector\n(sutra/connectors/mcp/supabase.py)",
+      "tier": "adapter",
+      "description": "Domain adapter wrapping MCPConnector, validating project_ref, enforcing read_only=true, and encoding query parameters."
+    },
+    {
+      "id": "mcp_client",
+      "label": "MCPClient\n(sutra/connectors/mcp/client.py)",
+      "tier": "service",
+      "description": "Protocol client executing tools/list and tools/call."
+    },
+    {
+      "id": "mcp_session",
+      "label": "MCPSession\n(sutra/connectors/mcp/session.py)",
+      "tier": "core",
+      "description": "Maintains protocol state FSM and negotiates MCP versions (2026-07-28, 2025-03-26, 2024-11-05)."
+    },
+    {
+      "id": "http_transport",
+      "label": "HttpMCPTransport\n(sutra/connectors/mcp/http.py)",
+      "tier": "transport",
+      "description": "Remote Streamable HTTP transport over HTTPS with Authorization: Bearer header injection."
+    },
+    {
+      "id": "supabase_remote_server",
+      "label": "Official Supabase Remote MCP Server\n(https://mcp.supabase.com/mcp)",
+      "tier": "external",
+      "description": "Official hosted Supabase MCP endpoint exposing database, docs, and schema inspection tools."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine\n(sutra/policy_engine.py)",
+      "tier": "security",
+      "description": "Centralized policy engine rejecting mutating tools under read_only=True and evaluating risk levels."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "Local SQLite audit trail recording tool call executions correlated by request_id without secret tokens."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "sutra_cli",
+      "to": "connector_registry",
+      "label": "Registers and invokes connectors",
+      "kind": "sync"
+    },
+    {
+      "from": "connector_registry",
+      "to": "supabase_connector",
+      "label": "Dispatches connect/test/execute",
+      "kind": "async"
+    },
+    {
+      "from": "sutra_cli",
+      "to": "oauth_client",
+      "label": "Initiates interactive PKCE flow",
+      "kind": "async"
+    },
+    {
+      "from": "oauth_client",
+      "to": "credential_provider",
+      "label": "Provides exchanged OAuthToken",
+      "kind": "sync"
+    },
+    {
+      "from": "supabase_connector",
+      "to": "credential_provider",
+      "label": "Retrieves Bearer auth token",
+      "kind": "sync"
+    },
+    {
+      "from": "credential_provider",
+      "to": "os_keyring",
+      "label": "Stores and reads persistent tokens",
+      "kind": "sync"
+    },
+    {
+      "from": "supabase_connector",
+      "to": "mcp_client",
+      "label": "Delegates protocol operations",
+      "kind": "async"
+    },
+    {
+      "from": "supabase_connector",
+      "to": "policy_engine",
+      "label": "Guards against mutating tools",
+      "kind": "sync"
+    },
+    {
+      "from": "supabase_connector",
+      "to": "activity_store",
+      "label": "Audits tool calls by request_id",
+      "kind": "sync"
+    },
+    {
+      "from": "mcp_client",
+      "to": "mcp_session",
+      "label": "Negotiates version and session",
+      "kind": "async"
+    },
+    {
+      "from": "mcp_session",
+      "to": "http_transport",
+      "label": "Sends JSON-RPC frames",
+      "kind": "async"
+    },
+    {
+      "from": "http_transport",
+      "to": "supabase_remote_server",
+      "label": "Streamable HTTP with project_ref & read_only params",
+      "kind": "network"
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "meta": {
+    "title": "AgentBridge — Pull Request Creation Sequence",
+    "subtitle": "End-to-End Flow from Mobile Trigger to GitHub PR Creation",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/git-pr-creation.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-6-git"
+    },
+    "description": "Sequence diagram tracing a remote Pull Request creation request from Telegram ChatOps through Control Plane, Permission Engine, Local Git topology inspection, and GitHub REST API execution."
+  },
+  "participants": [
+    {
+      "id": "operator",
+      "label": "Telegram User",
+      "kind": "actor",
+      "description": "Mobile engineer initiating Pull Request creation via ChatOps."
+    },
+    {
+      "id": "telegram_bot",
+      "label": "TelegramBotApp\n(sutra/apps/telegram)",
+      "kind": "service",
+      "description": "Captures /pr command or [Create PR] button, verifies project context."
+    },
+    {
+      "id": "permission_engine",
+      "label": "PermissionEngine\n(sutra/permissions.py)",
+      "tier": "security",
+      "kind": "service",
+      "description": "Evaluates HIGH risk PR creation request and obtains human authorization."
+    },
+    {
+      "id": "control_plane",
+      "label": "ControlPlane\n(sutra/control_plane)",
+      "kind": "service",
+      "description": "Routes authorized command frame over authenticated WSS connection."
+    },
+    {
+      "id": "local_runtime",
+      "label": "LocalRuntime\n(sutra/runtime)",
+      "kind": "service",
+      "description": "Validates project sandbox bounds and dispatches to Git Service layer."
+    },
+    {
+      "id": "local_git",
+      "label": "Local Git Adapter\n(sutra/git/local.py)",
+      "kind": "service",
+      "description": "Determines current branch, remote tracking topology, and commit status."
+    },
+    {
+      "id": "github_adapter",
+      "label": "GitHub REST Adapter\n(sutra/git/github.py)",
+      "kind": "service",
+      "description": "Parses owner/repo from remote URL, loads token from environment, posts to /repos/{owner}/{repo}/pulls."
+    },
+    {
+      "id": "github_api",
+      "label": "GitHub API\n(api.github.com)",
+      "kind": "integration",
+      "description": "GitHub REST service creating pull request object and returning PR number and URL."
+    }
+  ],
+  "messages": [
+    {
+      "from": "operator",
+      "to": "telegram_bot",
+      "label": "Tap [🔀 Create PR] or send /pr <title>",
+      "action": "call"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "permission_engine",
+      "label": "check_permission(action_type='git_pr_create')",
+      "action": "call"
+    },
+    {
+      "from": "permission_engine",
+      "to": "telegram_bot",
+      "label": "Authorization confirmed",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "control_plane",
+      "label": "dispatch_command('git.pr_create', {project_root, title, head, base})",
+      "action": "call"
+    },
+    {
+      "from": "control_plane",
+      "to": "local_runtime",
+      "label": "WSS frame: git.pr_create",
+      "action": "call"
+    },
+    {
+      "from": "local_runtime",
+      "to": "local_git",
+      "label": "get_git_branches(repo_root)",
+      "action": "call"
+    },
+    {
+      "from": "local_git",
+      "to": "local_runtime",
+      "label": "Branch info (head='feature/auth')",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "github_adapter",
+      "label": "create_pull_request(owner, repo, title, body, head, base)",
+      "action": "call"
+    },
+    {
+      "from": "github_adapter",
+      "to": "github_api",
+      "label": "POST /repos/{owner}/{repo}/pulls",
+      "action": "call"
+    },
+    {
+      "from": "github_api",
+      "to": "github_adapter",
+      "label": "HTTP 201 Created {number: 42, html_url, title}",
+      "action": "return"
+    },
+    {
+      "from": "github_adapter",
+      "to": "local_runtime",
+      "label": "GitHubPRResult(success=True, number=42, url)",
+      "action": "return"
+    },
+    {
+      "from": "local_runtime",
+      "to": "control_plane",
+      "label": "WSS response frame {status: 'success', payload}",
+      "action": "return"
+    },
+    {
+      "from": "control_plane",
+      "to": "telegram_bot",
+      "label": "Delivery to Telegram dispatcher",
+      "action": "return"
+    },
+    {
+      "from": "telegram_bot",
+      "to": "operator",
+      "label": "✅ Pull Request created #42 (feature/auth → main)",
+      "action": "return"
+    }
+  ]
+}

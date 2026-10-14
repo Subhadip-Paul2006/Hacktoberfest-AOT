@@ -1,0 +1,187 @@
+{
+  "meta": {
+    "title": "AgentBridge — Supabase MCP Tool Execution & Safety Decision Workflow",
+    "subtitle": "Read-Only Classification, PolicyEngine Risk Boundary, MCP Execution & Activity Auditing",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/supabase-mcp-tool-execution.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8c-supabase-mcp"
+    },
+    "description": "Decision workflow governing tool execution through the Supabase MCP Connector. Illustrates read-only classification (get_, list_, read_, search_, describe_, explain_), client-side gating under read_only=True, PolicyEngine risk evaluation, Streamable HTTP JSON-RPC dispatch, error normalization, and ActivityStore auditing."
+  },
+  "states": [
+    {
+      "id": "state_start",
+      "label": "Tool Call Request",
+      "kind": "start",
+      "description": "Agent or CLI dispatches ConnectorRequest(operation='tool:<tool_name>', parameters={...})."
+    },
+    {
+      "id": "action_check_connected",
+      "label": "Verify Connected State",
+      "kind": "step",
+      "description": "Checks if connector is connected and MCP session is in READY state."
+    },
+    {
+      "id": "decision_is_connected",
+      "label": "Is Connected?",
+      "kind": "decision",
+      "description": "Branch on connection state. If not connected, reject with ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_audit_start",
+      "label": "Record Audit Start",
+      "kind": "step",
+      "description": "Records tool call start in ActivityStore with sanitized arguments and request_id."
+    },
+    {
+      "id": "decision_is_read_only_tool",
+      "label": "Is Read-Only Tool?",
+      "kind": "decision",
+      "description": "Evaluates tool prefix (get_, list_, read_, search_, describe_, explain_, sql_select) or tool annotation read_only=True."
+    },
+    {
+      "id": "decision_connector_read_only",
+      "label": "Connector configured with read_only=True?",
+      "kind": "decision",
+      "description": "Checks if connector enforces strict read-only mode."
+    },
+    {
+      "id": "state_denied_read_only",
+      "label": "Deny Execution\n(ConnectorPermissionError)",
+      "kind": "end",
+      "description": "Hard rejection: mutating or unknown tool cannot be executed when read_only=True."
+    },
+    {
+      "id": "action_policy_check",
+      "label": "PolicyEngine Risk Evaluation",
+      "kind": "step",
+      "description": "Evaluates deterministic precedence: CRITICAL invariants > Session Grants > Persistent Policy > Default Risk."
+    },
+    {
+      "id": "decision_authorized",
+      "label": "Authorized by Policy?",
+      "kind": "decision",
+      "description": "Checks if PolicyEngine allowed execution (or auto-allowed LOW risk tool_read)."
+    },
+    {
+      "id": "state_denied_policy",
+      "label": "Raise ConnectorPermissionError",
+      "kind": "end",
+      "description": "Execution blocked by PolicyEngine policy violation or missing user confirmation."
+    },
+    {
+      "id": "action_execute_tool",
+      "label": "MCPClient.call_tool()",
+      "kind": "step",
+      "description": "Dispatches tools/call over Streamable HTTP with injected Bearer token."
+    },
+    {
+      "id": "decision_call_success",
+      "label": "Invocation Success?",
+      "kind": "decision",
+      "description": "Inspects JSON-RPC result for protocol errors, HTTP 401/403, or tool errors."
+    },
+    {
+      "id": "action_audit_success",
+      "label": "Update ActivityStore (COMPLETED)",
+      "kind": "step",
+      "description": "Records completion latency, status, and scrubbed result payload."
+    },
+    {
+      "id": "state_success",
+      "label": "Return ConnectorResult(success=True)",
+      "kind": "end",
+      "description": "Returns sanitized structured output to caller."
+    },
+    {
+      "id": "action_audit_failure",
+      "label": "Update ActivityStore (FAILED)",
+      "kind": "step",
+      "description": "Records error code and scrubbed error message."
+    },
+    {
+      "id": "state_error",
+      "label": "Raise Normalized ConnectorError",
+      "kind": "end",
+      "description": "Raises ConnectorAuthError, ConnectorPermissionError, or ConnectorToolError."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "state_start",
+      "to": "action_check_connected"
+    },
+    {
+      "from": "action_check_connected",
+      "to": "decision_is_connected"
+    },
+    {
+      "from": "decision_is_connected",
+      "to": "action_audit_start",
+      "label": "Connected"
+    },
+    {
+      "from": "action_audit_start",
+      "to": "decision_is_read_only_tool"
+    },
+    {
+      "from": "decision_is_read_only_tool",
+      "to": "action_policy_check",
+      "label": "Yes (Read-Only: LOW risk)"
+    },
+    {
+      "from": "decision_is_read_only_tool",
+      "to": "decision_connector_read_only",
+      "label": "No (Mutating / Unknown: HIGH risk)"
+    },
+    {
+      "from": "decision_connector_read_only",
+      "to": "state_denied_read_only",
+      "label": "Yes (read_only=True enforced)"
+    },
+    {
+      "from": "decision_connector_read_only",
+      "to": "action_policy_check",
+      "label": "No (read_only=False configured)"
+    },
+    {
+      "from": "action_policy_check",
+      "to": "decision_authorized"
+    },
+    {
+      "from": "decision_authorized",
+      "to": "action_execute_tool",
+      "label": "Allowed"
+    },
+    {
+      "from": "decision_authorized",
+      "to": "state_denied_policy",
+      "label": "Denied"
+    },
+    {
+      "from": "action_execute_tool",
+      "to": "decision_call_success"
+    },
+    {
+      "from": "decision_call_success",
+      "to": "action_audit_success",
+      "label": "OK"
+    },
+    {
+      "from": "action_audit_success",
+      "to": "state_success"
+    },
+    {
+      "from": "decision_call_success",
+      "to": "action_audit_failure",
+      "label": "Error / HTTP Fault"
+    },
+    {
+      "from": "action_audit_failure",
+      "to": "state_error"
+    }
+  ]
+}

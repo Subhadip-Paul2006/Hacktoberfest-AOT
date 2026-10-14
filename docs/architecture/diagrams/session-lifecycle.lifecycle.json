@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "title": "AgentBridge — Agent Session Lifecycle",
+    "subtitle": "State Machine, Lock Acquisition, and Supervision",
+    "type": "lifecycle",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/session-lifecycle.lifecycle.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "hardening-pass-2026-10"
+    },
+    "description": "Lifecycle state transitions for AgentBridge sessions from creation to termination, including workspace locking, watchdog supervision, loop detection, and process tree teardown."
+  },
+  "states": [
+    {
+      "id": "idle",
+      "label": "IDLE",
+      "kind": "initial",
+      "description": "Session created in SQLite / memory with unique session_id and project metadata. No subprocess or workspace lock active.",
+      "source": { "file": "sutra/agents/models.py", "symbol": "AgentSessionStatus.IDLE" }
+    },
+    {
+      "id": "starting",
+      "label": "STARTING",
+      "kind": "transient",
+      "description": "Acquiring workspace READ/WRITE lock, initializing adapter descriptor, resolving executable path, incrementing session generation counter.",
+      "source": { "file": "sutra/agents/models.py", "symbol": "AgentSessionStatus.STARTING" }
+    },
+    {
+      "id": "running",
+      "label": "RUNNING",
+      "kind": "steady",
+      "description": "Subprocess active with clean environment. Output streaming with backpressure debouncing. AgentSupervisor watchdog tracking health snapshots.",
+      "source": { "file": "sutra/agents/models.py", "symbol": "AgentSessionStatus.RUNNING" }
+    },
+    {
+      "id": "blocked",
+      "label": "BLOCKED\n(Loop / Stalled)",
+      "kind": "transient",
+      "description": "AgentLoopDetector identified oscillation, repeated command, or repeated error. Emits AGENT_BLOCKED event to ChatOps for intervention.",
+      "source": { "file": "sutra/agents/supervisor.py", "symbol": "AgentSupervisor" }
+    },
+    {
+      "id": "stopping",
+      "label": "STOPPING",
+      "kind": "transient",
+      "description": "Graceful SIGINT/SIGTERM sent to adapter subprocess tree. Bounded stop timeout timer armed.",
+      "source": { "file": "sutra/agents/manager.py", "symbol": "AgentManager.stop" }
+    },
+    {
+      "id": "stopped",
+      "label": "STOPPED",
+      "kind": "terminal",
+      "description": "Process terminated (force killed with taskkill /T /F on Windows if timeout exceeded). Workspace lock released. Session grants cleared.",
+      "source": { "file": "sutra/agents/models.py", "symbol": "AgentSessionStatus.STOPPED" }
+    },
+    {
+      "id": "failed",
+      "label": "FAILED",
+      "kind": "terminal",
+      "description": "Process exited unexpectedly, startup failure, or unrecoverable adapter crash. Error message captured for diagnosis. Can transition to STARTING for restart.",
+      "source": { "file": "sutra/agents/models.py", "symbol": "AgentSessionStatus.FAILED" }
+    }
+  ],
+  "transitions": [
+    {
+      "from": "idle",
+      "to": "starting",
+      "trigger": "agent.start command",
+      "kind": "normal",
+      "description": "Operator triggers session start. Lock acquired and environment prepared."
+    },
+    {
+      "from": "starting",
+      "to": "running",
+      "trigger": "Subprocess launched successfully",
+      "kind": "normal",
+      "description": "Adapter process is alive, stdout/stderr listeners attached."
+    },
+    {
+      "from": "starting",
+      "to": "failed",
+      "trigger": "Executable missing or lock conflict",
+      "kind": "error",
+      "description": "Startup failed or workspace lock acquisition timed out."
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "trigger": "Loop or stall detected by supervisor",
+      "kind": "error",
+      "description": "AgentLoopDetector triggers AGENT_BLOCKED; supervisor alerts operator."
+    },
+    {
+      "from": "blocked",
+      "to": "running",
+      "trigger": "Operator prompts corrective instruction",
+      "kind": "normal",
+      "description": "New prompt resets health monitor and resumes execution."
+    },
+    {
+      "from": "running",
+      "to": "stopping",
+      "trigger": "agent.stop command or prompt completion",
+      "kind": "normal",
+      "description": "Controlled shutdown initiated with bounded timeout."
+    },
+    {
+      "from": "running",
+      "to": "failed",
+      "trigger": "Subprocess non-zero exit or crash",
+      "kind": "error",
+      "description": "Uncontrolled termination detected by monitor thread."
+    },
+    {
+      "from": "stopping",
+      "to": "stopped",
+      "trigger": "Process tree terminated cleanly",
+      "kind": "normal",
+      "description": "Resources and workspace locks fully released."
+    },
+    {
+      "from": "stopping",
+      "to": "stopped",
+      "trigger": "Stop timeout expired (SIGKILL / taskkill)",
+      "kind": "timeout",
+      "description": "Force kill executed after grace period expires."
+    },
+    {
+      "from": "failed",
+      "to": "starting",
+      "trigger": "Operator restart command",
+      "kind": "normal",
+      "description": "Failed session can be re-launched with fresh generation."
+    }
+  ]
+}

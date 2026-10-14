@@ -1,0 +1,155 @@
+{
+  "meta": {
+    "title": "AgentBridge — Environment & Connector Analysis Sequence",
+    "subtitle": "Safe Probing, Connector Inspection, Evidence Auditing & Metrics",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/environment-analysis.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-4-connector-analyzer"
+    },
+    "description": "Sequence diagram tracing execution of an analysis request across ConnectorAnalyzer, Environment/CLI/Client probes, connector instance, ActivityStore, and MetricsRegistry."
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "label": "ControlPlane / Operator",
+      "kind": "actor",
+      "description": "Initiator of the connector verification or registration hook."
+    },
+    {
+      "id": "analyzer",
+      "label": "ConnectorAnalyzer\n(sutra/connectors/analyzer)",
+      "kind": "service",
+      "description": "Pipeline coordinator managing concurrency, check dispatch, and report synthesis."
+    },
+    {
+      "id": "registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "kind": "service",
+      "description": "Provides connector instances and normalized analysis descriptors."
+    },
+    {
+      "id": "probes",
+      "label": "Probing Engine\n(Environment, CLI, Client)",
+      "kind": "service",
+      "description": "Discovers OS properties, binary executables, and workstation client configs."
+    },
+    {
+      "id": "connector",
+      "label": "Connector Instance\n(MCP / REST / CLI)",
+      "kind": "integration",
+      "description": "Target connector subjected to non-destructive connection and health diagnostics."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "kind": "database",
+      "description": "Audits verification outcomes and supplies historical tool-invocation evidence."
+    },
+    {
+      "id": "metrics",
+      "label": "Metrics\n(sutra/metrics.py)",
+      "kind": "service",
+      "description": "Increments in-process aggregate execution counters."
+    }
+  ],
+  "messages": [
+    {
+      "from": "caller",
+      "to": "analyzer",
+      "label": "analyze(connector_id, request_id='req_123')"
+    },
+    {
+      "from": "analyzer",
+      "to": "metrics",
+      "label": "record('analyzer_run_total', 1)"
+    },
+    {
+      "from": "analyzer",
+      "to": "registry",
+      "label": "get_analysis_descriptor(connector_id)"
+    },
+    {
+      "from": "registry",
+      "to": "analyzer",
+      "label": "ConnectorAnalysisDescriptor"
+    },
+    {
+      "from": "analyzer",
+      "to": "probes",
+      "label": "EnvironmentProbe.get_environment_info()"
+    },
+    {
+      "from": "probes",
+      "to": "analyzer",
+      "label": "OS family, arch, python_ver (safe, no env dump)"
+    },
+    {
+      "from": "analyzer",
+      "to": "probes",
+      "label": "CLIProbe.check_binary(declared_binary_names)"
+    },
+    {
+      "from": "probes",
+      "to": "analyzer",
+      "label": "BinaryCheckResult (available, path, version)"
+    },
+    {
+      "from": "analyzer",
+      "to": "probes",
+      "label": "ClientProbe.detect_all_clients()"
+    },
+    {
+      "from": "probes",
+      "to": "analyzer",
+      "label": "ClientDetectionResult (Cursor, VS Code, AgentBridge)"
+    },
+    {
+      "from": "analyzer",
+      "to": "connector",
+      "label": "connect() [dry/probe connection]"
+    },
+    {
+      "from": "connector",
+      "to": "analyzer",
+      "label": "Status.READY / Connected"
+    },
+    {
+      "from": "analyzer",
+      "to": "connector",
+      "label": "health_check() & discover()"
+    },
+    {
+      "from": "connector",
+      "to": "analyzer",
+      "label": "ConnectorHealth, declared tools/resources"
+    },
+    {
+      "from": "analyzer",
+      "to": "activity_store",
+      "label": "count_recent_tool_calls(connector_id)"
+    },
+    {
+      "from": "activity_store",
+      "to": "analyzer",
+      "label": "call_count (UsageEvidenceState: OBSERVED_IN_USE)"
+    },
+    {
+      "from": "analyzer",
+      "to": "activity_store",
+      "label": "record_event(type='connector_analysis', sanitized_data)"
+    },
+    {
+      "from": "analyzer",
+      "to": "metrics",
+      "label": "record('analyzer_run_success', 1)"
+    },
+    {
+      "from": "analyzer",
+      "to": "caller",
+      "label": "AnalysisReport (state=VERIFIED, checks=12)"
+    }
+  ]
+}

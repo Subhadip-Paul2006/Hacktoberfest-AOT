@@ -1,0 +1,166 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP HTTP Transport Lifecycle & Connection Workflow",
+    "subtitle": "Endpoint Validation, Handshake, Streamable HTTP Dispatch & Teardown",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-http-lifecycle.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-7-mcp-http"
+    },
+    "description": "Lifecycle finite state machine and error handling workflow governing remote MCP HTTP connections in AgentBridge. Illustrates transitions from DISCONNECTED through CONNECTING, Streamable HTTP POST / Legacy SSE establishment, request dispatching, session ID tracking, disconnect handling, and graceful teardown."
+  },
+  "states": [
+    {
+      "id": "state_disconnected",
+      "label": "DISCONNECTED",
+      "kind": "start",
+      "description": "Initial state. No HTTP client session exists. Calls to send_request immediately raise ConnectorNotConnectedError."
+    },
+    {
+      "id": "action_validate_url",
+      "label": "Validate Endpoint URL",
+      "kind": "step",
+      "description": "Validates URL scheme (http/https), enforces HTTPS for remote hosts unless allow_http=True, and bounds redirects."
+    },
+    {
+      "id": "decision_valid_url",
+      "label": "URL Valid & Secure?",
+      "kind": "decision",
+      "description": "Rejects insecure schemes, non-HTTP protocols, and remote plain HTTP without explicit opt-in."
+    },
+    {
+      "id": "state_error",
+      "label": "ERROR",
+      "kind": "step",
+      "description": "Connection or validation failure. State set to ERROR and normalized ConnectorError raised."
+    },
+    {
+      "id": "action_init_client",
+      "label": "Initialize AsyncClient",
+      "kind": "step",
+      "description": "Configures httpx.AsyncClient with connection, read, write, and pool timeouts."
+    },
+    {
+      "id": "decision_mode",
+      "label": "Legacy SSE Mode?",
+      "kind": "decision",
+      "description": "Checks config.legacy_sse: if True, establishes GET /sse stream; if False, uses Streamable HTTP directly."
+    },
+    {
+      "id": "action_open_sse",
+      "label": "Connect GET /sse",
+      "kind": "step",
+      "description": "Initiates event stream, awaits 'endpoint' event from server, and records announced POST URL."
+    },
+    {
+      "id": "state_connected",
+      "label": "CONNECTED",
+      "kind": "step",
+      "description": "Transport is connected and ready to dispatch JSON-RPC 2.0 requests over HTTP POST."
+    },
+    {
+      "id": "action_dispatch_request",
+      "label": "Dispatch POST Request",
+      "kind": "step",
+      "description": "Builds headers with auth injection, tracks mcp-session-id, and sends JSON-RPC payload."
+    },
+    {
+      "id": "decision_response_type",
+      "label": "Response Content-Type?",
+      "kind": "decision",
+      "description": "Routes response parsing to direct JSON reader or streaming SSE chunk reader."
+    },
+    {
+      "id": "action_close",
+      "label": "Initiate Teardown",
+      "kind": "step",
+      "description": "transport.close() requested. Transitions state to CLOSING, cancels pending tasks, and releases client."
+    },
+    {
+      "id": "state_closing",
+      "label": "CLOSING",
+      "kind": "step",
+      "description": "Teardown in progress. New requests rejected, active streams cleanly closed."
+    },
+    {
+      "id": "state_closed",
+      "label": "CLOSED / DISCONNECTED",
+      "kind": "end",
+      "description": "All resources released, background listeners cancelled. State returned to DISCONNECTED."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "state_disconnected",
+      "to": "action_validate_url",
+      "label": "open() called"
+    },
+    {
+      "from": "action_validate_url",
+      "to": "decision_valid_url",
+      "label": "validate scheme"
+    },
+    {
+      "from": "decision_valid_url",
+      "to": "state_error",
+      "label": "insecure or invalid"
+    },
+    {
+      "from": "decision_valid_url",
+      "to": "action_init_client",
+      "label": "valid"
+    },
+    {
+      "from": "action_init_client",
+      "to": "decision_mode",
+      "label": "check mode"
+    },
+    {
+      "from": "decision_mode",
+      "to": "action_open_sse",
+      "label": "legacy_sse=True"
+    },
+    {
+      "from": "decision_mode",
+      "to": "state_connected",
+      "label": "legacy_sse=False"
+    },
+    {
+      "from": "action_open_sse",
+      "to": "state_connected",
+      "label": "endpoint received"
+    },
+    {
+      "from": "state_connected",
+      "to": "action_dispatch_request",
+      "label": "send_request()"
+    },
+    {
+      "from": "action_dispatch_request",
+      "to": "decision_response_type",
+      "label": "receive HTTP response"
+    },
+    {
+      "from": "decision_response_type",
+      "to": "state_connected",
+      "label": "result parsed"
+    },
+    {
+      "from": "state_connected",
+      "to": "action_close",
+      "label": "close() called"
+    },
+    {
+      "from": "action_close",
+      "to": "state_closing",
+      "label": "transition to CLOSING"
+    },
+    {
+      "from": "state_closing",
+      "to": "state_closed",
+      "label": "resources released"
+    }
+  ]
+}

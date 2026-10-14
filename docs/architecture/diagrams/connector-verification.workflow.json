@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "title": "AgentBridge — Connector Verification Pipeline Workflow",
+    "subtitle": "12-Stage Deterministic Verification & State Aggregation Machine",
+    "type": "workflow",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/connector-verification.workflow.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-4-connector-analyzer"
+    },
+    "description": "Multi-stage verification workflow executing 12 independent checks across configuration, network reachability, credential authenticity, capabilities, tool clients, diagnostics, and historical usage evidence without provider branching."
+  },
+  "states": [
+    {
+      "id": "analysis_trigger",
+      "label": "Analysis Triggered",
+      "kind": "start",
+      "description": "Triggered via explicit API (analyze/analyze_all) or on connector registration hook with correlated request_id."
+    },
+    {
+      "id": "fetch_descriptor",
+      "label": "Fetch Descriptor",
+      "kind": "step",
+      "description": "Extracts standardized ConnectorAnalysisDescriptor from ConnectorRegistry containing declared vars, binaries, and transport hints."
+    },
+    {
+      "id": "stage_discovery",
+      "label": "Stage 1: Discovery",
+      "kind": "step",
+      "description": "Executes EnvironmentProbe: host OS, architecture, Python version, working directory, and write permissions."
+    },
+    {
+      "id": "stage_configuration",
+      "label": "Stage 2: Configuration",
+      "kind": "decision",
+      "description": "Checks declared environment variables and config schema. PASS if all present, UNKNOWN if partial/missing declared vars."
+    },
+    {
+      "id": "stage_connection",
+      "label": "Stage 5: Connection",
+      "kind": "decision",
+      "description": "Attempts non-destructive connection probe if enabled. Distinguishes network REACHABLE from unreachability."
+    },
+    {
+      "id": "stage_authentication",
+      "label": "Stage 6: Authentication",
+      "kind": "decision",
+      "description": "Validates credential acceptance. PASS=AUTHENTICATED, FAIL=auth rejected, UNKNOWN=untested or missing validation mechanism."
+    },
+    {
+      "id": "stage_capabilities",
+      "label": "Stage 7: Capabilities",
+      "kind": "step",
+      "description": "Discovers and inventories declared tools and resources without mutating external state."
+    },
+    {
+      "id": "stage_client_applicability",
+      "label": "Stages 8-9: CLI & Clients",
+      "kind": "step",
+      "description": "Checks local binary availability (which/where.exe) and workstation tool integrations (Cursor, VS Code, AgentBridge)."
+    },
+    {
+      "id": "stage_health_latency",
+      "label": "Stages 10-11: Health & Latency",
+      "kind": "step",
+      "description": "Executes diagnostic health check and measures end-to-end roundtrip latency in milliseconds."
+    },
+    {
+      "id": "stage_usage_evidence",
+      "label": "Stage 12: Usage Evidence",
+      "kind": "decision",
+      "description": "Queries ActivityStore for tool_call_start records. Yields OBSERVED_IN_USE, NOT_OBSERVED, or UNKNOWN (if store absent)."
+    },
+    {
+      "id": "evidence_aggregation",
+      "label": "Evidence Aggregation FSM",
+      "kind": "step",
+      "description": "Deterministically aggregates check results into VerificationState: UNCONFIGURED, CONFIGURED, CONNECTED, AUTHENTICATED, CAPABILITY_DISCOVERED, VERIFIED, or FAILED."
+    },
+    {
+      "id": "persist_audit",
+      "label": "Audit & Observability",
+      "kind": "end",
+      "description": "Records analysis event in ActivityStore (sanitized), increments Metrics counters, and returns immutable AnalysisReport."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "analysis_trigger",
+      "to": "fetch_descriptor",
+      "label": "start analysis"
+    },
+    {
+      "from": "fetch_descriptor",
+      "to": "stage_discovery",
+      "label": "descriptor retrieved"
+    },
+    {
+      "from": "stage_discovery",
+      "to": "stage_configuration",
+      "label": "platform identified"
+    },
+    {
+      "from": "stage_configuration",
+      "to": "stage_connection",
+      "label": "valid config"
+    },
+    {
+      "from": "stage_configuration",
+      "to": "evidence_aggregation",
+      "label": "missing required config"
+    },
+    {
+      "from": "stage_connection",
+      "to": "stage_authentication",
+      "label": "endpoint reachable"
+    },
+    {
+      "from": "stage_connection",
+      "to": "evidence_aggregation",
+      "label": "endpoint unreachable (FAIL/UNKNOWN)"
+    },
+    {
+      "from": "stage_authentication",
+      "to": "stage_capabilities",
+      "label": "credentials verified"
+    },
+    {
+      "from": "stage_authentication",
+      "to": "stage_client_applicability",
+      "label": "auth unknown or dry run"
+    },
+    {
+      "from": "stage_capabilities",
+      "to": "stage_client_applicability",
+      "label": "tools discovered"
+    },
+    {
+      "from": "stage_client_applicability",
+      "to": "stage_health_latency",
+      "label": "clients verified"
+    },
+    {
+      "from": "stage_health_latency",
+      "to": "stage_usage_evidence",
+      "label": "diagnostics measured"
+    },
+    {
+      "from": "stage_usage_evidence",
+      "to": "evidence_aggregation",
+      "label": "audit queried"
+    },
+    {
+      "from": "evidence_aggregation",
+      "to": "persist_audit",
+      "label": "report constructed"
+    }
+  ]
+}

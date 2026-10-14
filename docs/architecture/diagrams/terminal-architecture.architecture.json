@@ -1,0 +1,172 @@
+{
+  "meta": {
+    "title": "AgentBridge — Secure Local Terminal Connector Architecture",
+    "subtitle": "Native Shell-Less Subprocess Dispatch, Workspace Confinement, Policy Boundaries & Clean Process Cleanup",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/terminal-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8b-terminal-connector"
+    },
+    "description": "System architecture of Phase 7.8B Secure Local Terminal Connector in AgentBridge. Illustrates caller dispatch via CLI and autonomous runtime agents, lifecycle management in ConnectorRegistry, shell-less validation in TerminalConnector, path confinement within authorized workspace roots, PolicyEngine risk evaluation and CRITICAL invariant enforcement, WorkspaceLockManager concurrency protection, controlled environment sanitization, native asynchronous process supervision (asyncio.create_subprocess_exec), deep process-tree termination on timeout/cancellation, and secret redaction across ActivityStore history."
+  },
+  "components": [
+    {
+      "id": "sutra_cli",
+      "label": "AgentBridge CLI & Autonomous Runtime\n(sutra/connectors/cli.py)",
+      "tier": "ui",
+      "description": "CLI commands (sutra connectors add/test/status/tools) and autonomous agent workflows invoking canonical connector requests."
+    },
+    {
+      "id": "connector_registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "tier": "service",
+      "description": "Central coordinator registering terminal-local as ConnectorType.CLI with provider 'terminal', storing persistent non-secret metadata in SQLite."
+    },
+    {
+      "id": "terminal_connector",
+      "label": "TerminalConnector\n(sutra/connectors/terminal/connector.py)",
+      "tier": "adapter",
+      "description": "Canonical Connector contract implementation managing lifecycle (READY/DISCONNECTED), concurrency semaphores, request parsing, and execution."
+    },
+    {
+      "id": "command_validator",
+      "label": "Command Safety Validator\n(sutra/connectors/terminal/security.py)",
+      "tier": "security",
+      "description": "Enforces strict shell-less argument boundary validation, rejecting chaining operators (; && || | > <), command substitutions ($() ``), and wrapper scripts (bash -c, cmd /c, powershell -Command)."
+    },
+    {
+      "id": "workspace_guard",
+      "label": "Workspace Confinement Guard\n(sutra/security.py)",
+      "tier": "security",
+      "description": "Canonicalizes working directories, verifies confinement within authorized workspace roots, rejects filesystem roots and relative traversal (..) escapes."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine & PermissionEngine\n(sutra/policy_engine.py)",
+      "tier": "security",
+      "description": "Authoritative security boundary assessing risk levels (LOW/HIGH/CRITICAL), auto-approving safe read-only queries, enforcing session grants, and guarding CRITICAL invariants."
+    },
+    {
+      "id": "workspace_lock",
+      "label": "WorkspaceLockManager\n(sutra/workspace_lock.py)",
+      "tier": "service",
+      "description": "Coordinates granular shared-read and exclusive-write directory locks to prevent overlapping destructive mutations across concurrent sessions."
+    },
+    {
+      "id": "env_controller",
+      "label": "Controlled Environment Policy\n(sutra/connectors/terminal/security.py)",
+      "tier": "security",
+      "description": "Constructs minimal subprocess environments based on platform whitelists (SAFE_ENV_WHITELIST_NT / POSIX), stripping parent process secrets and API tokens."
+    },
+    {
+      "id": "async_subprocess",
+      "label": "Native Subprocess Supervisor\n(asyncio.create_subprocess_exec)",
+      "tier": "core",
+      "description": "Spawns native asynchronous child processes strictly with shell=False, piping stdout/stderr and binding stdin to DEVNULL with bounded byte caps."
+    },
+    {
+      "id": "process_cleaner",
+      "label": "Process Tree Terminator\n(sutra/connectors/terminal/security.py)",
+      "tier": "core",
+      "description": "Safely terminates child process and all descendants on timeout or cancellation (taskkill /F /T on Windows, terminate -> kill on POSIX), eliminating zombie leaks."
+    },
+    {
+      "id": "redaction_engine",
+      "label": "Centralized Redaction Engine\n(sutra/redaction.py)",
+      "tier": "security",
+      "description": "Sanitizes private keys, auth headers, and bearer tokens from stdout/stderr, arguments, and diagnostic payloads before persistence."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "data",
+      "description": "SQLite operational audit history recording tool call start, redacted arguments, completion status, duration, and error codes correlated by universal request_id."
+    },
+    {
+      "id": "metrics_engine",
+      "label": "Metrics Subsystem\n(sutra/metrics.py)",
+      "tier": "observability",
+      "description": "Records low-cardinality counters (terminal_commands_executed) and latency metrics."
+    },
+    {
+      "id": "host_os",
+      "label": "Local Host Operating System\n(Windows / macOS / Linux)",
+      "tier": "external",
+      "description": "Local machine environment executing authorized binary tools inside designated workspace."
+    }
+  ],
+  "links": [
+    {
+      "source": "sutra_cli",
+      "target": "connector_registry",
+      "label": "1. Dispatches connector request"
+    },
+    {
+      "source": "connector_registry",
+      "target": "terminal_connector",
+      "label": "2. Routes to terminal-local execute"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "command_validator",
+      "label": "3. Validates argument tokens & wrappers"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "workspace_guard",
+      "label": "4. Validates cwd confinement"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "policy_engine",
+      "label": "5. Evaluates risk & policy grants"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "workspace_lock",
+      "label": "6. Acquires workspace lock if required"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "env_controller",
+      "label": "7. Builds controlled environment"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "activity_store",
+      "label": "8. Audits execution start with request_id"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "async_subprocess",
+      "label": "9. Spawns via create_subprocess_exec (shell=False)"
+    },
+    {
+      "source": "async_subprocess",
+      "target": "host_os",
+      "label": "10. Native binary process execution"
+    },
+    {
+      "source": "async_subprocess",
+      "target": "process_cleaner",
+      "label": "11. Tree cleanup on timeout/cancellation"
+    },
+    {
+      "source": "async_subprocess",
+      "target": "redaction_engine",
+      "label": "12. Redacts stdout / stderr streams"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "activity_store",
+      "label": "13. Updates tool call completion & duration"
+    },
+    {
+      "source": "terminal_connector",
+      "target": "metrics_engine",
+      "label": "14. Records command execution metric"
+    }
+  ]
+}

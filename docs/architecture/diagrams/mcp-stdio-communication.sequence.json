@@ -1,0 +1,150 @@
+{
+  "meta": {
+    "title": "AgentBridge — MCP Stdio Communication & Stream Separation Sequence",
+    "subtitle": "Line-Delimited Framing, Stderr Buffering, Request Matching & ActivityStore Auditing",
+    "type": "sequence",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/mcp-stdio-communication.sequence.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-6-mcp-stdio"
+    },
+    "description": "Trace of a request/response cycle over the MCP stdio transport. Details stdin JSON-RPC transmission, asynchronous stderr capture, stdout line-delimited message parsing, future resolution, and diagnostic isolation."
+  },
+  "participants": [
+    {
+      "id": "caller",
+      "label": "Agent / ControlPlane",
+      "kind": "actor",
+      "description": "Caller invoking a tool or resource on the MCP connector."
+    },
+    {
+      "id": "connector",
+      "label": "MCPConnector\n(sutra/connectors/mcp)",
+      "kind": "adapter",
+      "description": "AgentBridge connector handling parameter scrubbing and activity recording."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "kind": "database",
+      "description": "Local SQLite audit trail storing tool_calls records."
+    },
+    {
+      "id": "client",
+      "label": "MCPClient\n(sutra/connectors/mcp)",
+      "kind": "service",
+      "description": "Domain MCP client orchestrating requests and timeouts."
+    },
+    {
+      "id": "transport",
+      "label": "StdioMCPTransport\n(sutra/connectors/mcp/stdio.py)",
+      "kind": "transport",
+      "description": "Stdio transport framing messages and managing streams."
+    },
+    {
+      "id": "process_stdin",
+      "label": "Process stdin",
+      "kind": "integration",
+      "description": "Standard input pipe of the child MCP server process."
+    },
+    {
+      "id": "process_stdout",
+      "label": "Process stdout",
+      "kind": "integration",
+      "description": "Standard output pipe emitting line-delimited JSON-RPC messages."
+    },
+    {
+      "id": "process_stderr",
+      "label": "Process stderr",
+      "kind": "integration",
+      "description": "Standard error pipe emitting diagnostic log lines."
+    }
+  ],
+  "steps": [
+    {
+      "from": "caller",
+      "to": "connector",
+      "message": "execute(ConnectorRequest(operation='tool:add', parameters={'a': 10, 'b': 20}))",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "record_tool_call(request_id, 'conn.mcp.add', arguments={'a': 10, 'b': 20}, status='running')",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "client",
+      "message": "call_tool(name='add', arguments={'a': 10, 'b': 20})",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "transport",
+      "message": "send_request('tools/call', {'name': 'add', 'arguments': {'a': 10, 'b': 20}})",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "transport",
+      "message": "allocate id=1, create future in _pending_requests[1]",
+      "kind": "internal"
+    },
+    {
+      "from": "transport",
+      "to": "process_stdin",
+      "message": "write('{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{...}}\\n')",
+      "kind": "async"
+    },
+    {
+      "from": "process_stderr",
+      "to": "transport",
+      "message": "stream log line: '[server] processing tool call'",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "transport",
+      "message": "append to _stderr_buffer (redacted, non-blocking)",
+      "kind": "internal"
+    },
+    {
+      "from": "process_stdout",
+      "to": "transport",
+      "message": "stream line: '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"30.0\"}]}}\\n'",
+      "kind": "async"
+    },
+    {
+      "from": "transport",
+      "to": "transport",
+      "message": "parse line, match id=1, resolve future",
+      "kind": "internal"
+    },
+    {
+      "from": "transport",
+      "to": "client",
+      "message": "return result payload dict",
+      "kind": "async"
+    },
+    {
+      "from": "client",
+      "to": "connector",
+      "message": "return MCPToolCallResult(content='30.0')",
+      "kind": "async"
+    },
+    {
+      "from": "connector",
+      "to": "activity_store",
+      "message": "update_tool_call(tool_call_id, status='success', result='30.0', duration_ms)",
+      "kind": "sync"
+    },
+    {
+      "from": "connector",
+      "to": "caller",
+      "message": "return ConnectorResult(success=True, content='30.0')",
+      "kind": "async"
+    }
+  ]
+}

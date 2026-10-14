@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "title": "AgentBridge — GitHub MCP Connector & Portable Authentication Architecture",
+    "subtitle": "Streamable HTTP Remote MCP Transport, OS Keyring Credentials & Policy Boundaries",
+    "type": "architecture",
+    "quality_profile": "showcase",
+    "output": "docs/architecture/diagrams/github-mcp-architecture.architecture.html",
+    "source": {
+      "repository": "https://github.com/Subhadip-Paul2006/NotForYou.git",
+      "revision": "phase-7-8a-github-mcp"
+    },
+    "description": "System architecture of Phase 7.8A GitHub Remote MCP Connector in AgentBridge. Illustrates user-facing CLI and runtime callers, ConnectorRegistry orchestration, GitHubMCPConnector adapter, portable OS Keyring and environment variable credential providers, MCPClient / MCPSession core, HttpMCPTransport streamable HTTP dispatch to the official GitHub Remote MCP endpoint (https://api.githubcopilot.com/mcp/), PolicyEngine risk boundary, and SQLite ActivityStore audit correlation."
+  },
+  "components": [
+    {
+      "id": "sutra_cli",
+      "label": "AgentBridge CLI / Runtime / Telegram\n(sutra/connectors/cli.py)",
+      "tier": "ui",
+      "description": "User-facing CLI commands (add, auth, test, status, tools, remove) and autonomous runtime agent invocation."
+    },
+    {
+      "id": "connector_registry",
+      "label": "ConnectorRegistry\n(sutra/connectors/registry.py)",
+      "tier": "service",
+      "description": "Central lifecycle coordinator managing connector registration, persistent non-secret SQLite config, state transitions, and health probes."
+    },
+    {
+      "id": "credential_provider",
+      "label": "GitHubCredentialProvider\n(sutra/credentials.py)",
+      "tier": "security",
+      "description": "Portable credential abstraction resolving credentials via Memory > SUTRA_GITHUB_TOKEN > GITHUB_PERSONAL_ACCESS_TOKEN > OS Keyring with zero token echoing or persistence leaks."
+    },
+    {
+      "id": "os_keyring",
+      "label": "OS Keyring Backend\n(Windows Credential Manager / macOS Keychain / Linux Secret Service)",
+      "tier": "external",
+      "description": "Secure operating system credential storage protecting PAT secrets outside git repositories and SQLite databases."
+    },
+    {
+      "id": "github_connector",
+      "label": "GitHubMCPConnector\n(sutra/connectors/mcp/github.py)",
+      "tier": "adapter",
+      "description": "Domain connector adapter wrapping MCPConnector, configuring default HTTPS endpoint (https://api.githubcopilot.com/mcp/), dynamic auth headers injection, and sanitizing descriptors."
+    },
+    {
+      "id": "mcp_client",
+      "label": "MCPClient\n(sutra/connectors/mcp/client.py)",
+      "tier": "service",
+      "description": "Domain-level MCP client orchestrating tools discovery (tools/list), invocations (tools/call), and bounded pagination."
+    },
+    {
+      "id": "mcp_session",
+      "label": "MCPSession\n(sutra/connectors/mcp/session.py)",
+      "tier": "core",
+      "description": "Protocol coordinator maintaining session FSM and protocol version negotiation (2026-07-28, 2025-03-26, 2024-11-05)."
+    },
+    {
+      "id": "http_transport",
+      "label": "HttpMCPTransport\n(sutra/connectors/mcp/http.py)",
+      "tier": "transport",
+      "description": "Remote transport implementing Streamable HTTP over HTTPS with authorization header injection, request timeouts, and error mapping."
+    },
+    {
+      "id": "github_remote_server",
+      "label": "GitHub Remote MCP Server\n(https://api.githubcopilot.com/mcp/)",
+      "tier": "external",
+      "description": "Official GitHub Remote MCP server exposing GitHub tools (repos, issues, PRs, code search) authenticated via Bearer token."
+    },
+    {
+      "id": "policy_engine",
+      "label": "PolicyEngine\n(sutra/policy_engine.py)",
+      "tier": "security",
+      "description": "Centralized permission policy engine enforcing deterministic precedence: CRITICAL safety invariants > session grants > persistent workspace/global policies > risk defaults."
+    },
+    {
+      "id": "activity_store",
+      "label": "ActivityStore\n(sutra/activity_store.py)",
+      "tier": "storage",
+      "description": "Local SQLite audit trail recording connector lifecycle events and tool call starts/completions correlated by request_id without secret tokens."
+    }
+  ],
+  "relationships": [
+    {
+      "from": "sutra_cli",
+      "to": "connector_registry",
+      "label": "Manages connectors & triggers analysis",
+      "kind": "sync"
+    },
+    {
+      "from": "connector_registry",
+      "to": "github_connector",
+      "label": "Dispatches lifecycle connect/health/execute",
+      "kind": "async"
+    },
+    {
+      "from": "github_connector",
+      "to": "credential_provider",
+      "label": "Retrieves Bearer auth headers",
+      "kind": "sync"
+    },
+    {
+      "from": "credential_provider",
+      "to": "os_keyring",
+      "label": "Reads/writes PAT credentials",
+      "kind": "sync"
+    },
+    {
+      "from": "github_connector",
+      "to": "mcp_client",
+      "label": "Delegates protocol operations",
+      "kind": "async"
+    },
+    {
+      "from": "github_connector",
+      "to": "policy_engine",
+      "label": "Evaluates tool permissions prior to dispatch",
+      "kind": "sync"
+    },
+    {
+      "from": "github_connector",
+      "to": "activity_store",
+      "label": "Audits tool calls & operational metrics",
+      "kind": "sync"
+    },
+    {
+      "from": "mcp_client",
+      "to": "mcp_session",
+      "label": "Negotiates version & manages state",
+      "kind": "async"
+    },
+    {
+      "from": "mcp_session",
+      "to": "http_transport",
+      "label": "Dispatches framed JSON-RPC requests",
+      "kind": "async"
+    },
+    {
+      "from": "http_transport",
+      "to": "github_remote_server",
+      "label": "HTTPS POST with Authorization: Bearer <PAT>",
+      "kind": "network"
+    }
+  ]
+}
